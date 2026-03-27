@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="0 0 120 40">
+  <rect width="36" height="36" x="2" y="2" rx="8" fill="#1B3A5C"/>
+  <text x="19" y="25" font-family="Inter, -apple-system, sans-serif" font-size="14" font-weight="700" fill="white" text-anchor="middle">CP</text>
+  <text x="48" y="16" font-family="Inter, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#1B3A5C">ClaimsPulse</text>
+  <text x="48" y="30" font-family="Inter, -apple-system, sans-serif" font-size="9" fill="#5F5E5A">Santam / SEB</text>
+</svg>

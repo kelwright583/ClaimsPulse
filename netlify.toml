@@ -1,0 +1,16 @@
+[build]
+  command = "rm -rf node_modules .next package-lock.json && npm install && next build"
+  publish = ".next"
+
+[functions]
+  node_bundler = "nft"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[[edge_functions]]
+  function = "no-durable-cache"
+  path = "/*"
+
+[build.environment]
+  NODE_VERSION = "20"

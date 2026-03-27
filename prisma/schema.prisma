@@ -1,0 +1,330 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Auth & Users ──────────────────────────────────────────────────────────────
+
+model Profile {
+  id        String   @id @db.Uuid
+  email     String
+  fullName  String?  @map("full_name")
+  role      UserRole @default(CLAIMS_TECHNICIAN)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  acknowledgedDelays AcknowledgedDelay[]
+  importRuns         ImportRun[]
+
+  @@map("profiles")
+}
+
+enum UserRole {
+  SENIOR_MANAGEMENT
+  HEAD_OF_CLAIMS
+  TEAM_LEADER
+  CLAIMS_TECHNICIAN
+  TP_HANDLER
+  SALVAGE_HANDLER
+
+  @@map("user_role")
+}
+
+// ── Import tracking ───────────────────────────────────────────────────────────
+
+model ImportRun {
+  id          String     @id @default(uuid()) @db.Uuid
+  reportType  ReportType @map("report_type")
+  filename    String
+  uploadedBy  String?    @map("uploaded_by") @db.Uuid
+  rowsRead    Int        @default(0) @map("rows_read")
+  rowsCreated Int        @default(0) @map("rows_created")
+  rowsUpdated Int        @default(0) @map("rows_updated")
+  rowsSkipped Int        @default(0) @map("rows_skipped")
+  rowsErrored Int        @default(0) @map("rows_errored")
+  errorsJson  Json?      @map("errors_json")
+  periodStart DateTime?  @map("period_start")
+  periodEnd   DateTime?  @map("period_end")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  uploader Profile? @relation(fields: [uploadedBy], references: [id])
+
+  @@index([reportType])
+  @@index([createdAt])
+  @@map("import_runs")
+}
+
+enum ReportType {
+  CLAIMS_OUTSTANDING
+  PAYEE
+  REVENUE_ANALYSIS
+  MOVEMENT_SUMMARY
+
+  @@map("report_type")
+}
+
+// ── Claims snapshots ──────────────────────────────────────────────────────────
+// One row per claim per daily import. This is the core historical record.
+
+model ClaimSnapshot {
+  id           String   @id @default(uuid()) @db.Uuid
+  importRunId  String   @map("import_run_id") @db.Uuid
+  snapshotDate DateTime @map("snapshot_date") @db.Date
+  claimId      String   @map("claim_id")
+  oldClaimId   String?  @map("old_claim_id")
+
+  // Handler & status
+  handler         String?
+  claimStatus     String?  @map("claim_status")
+  secondaryStatus String?  @map("secondary_status")
+
+  // Classification
+  orgUnit     String? @map("org_unit")
+  uwYear      Int?    @map("uw_year")
+  groupCode   String? @map("group_code")
+  groupDesc   String? @map("group_desc")
+  sectionDesc String? @map("section_desc")
+  productLine String? @map("product_line")
+
+  // Policy & insured
+  policyNumber String? @map("policy_number")
+  insured      String?
+  broker       String?
+
+  // Dates
+  dateOfLoss         DateTime? @map("date_of_loss") @db.Date
+  dateOfNotification DateTime? @map("date_of_notification") @db.Date
+  dateOfRegistration DateTime? @map("date_of_registration") @db.Date
+
+  // Cause & location
+  cause    String?
+  lossArea String? @map("loss_area")
+  lossAddr String? @map("loss_addr")
+
+  // Reserve
+  intimatedAmount Decimal? @map("intimated_amount") @db.Decimal(18, 2)
+  retainedPct     Decimal? @map("retained_pct") @db.Decimal(10, 6)
+  deductible      Decimal? @db.Decimal(18, 2)
+
+  // Paid breakdown
+  ownDamagePaid     Decimal? @map("own_damage_paid") @db.Decimal(18, 2)
+  thirdPartyPaid    Decimal? @map("third_party_paid") @db.Decimal(18, 2)
+  expensesPaid      Decimal? @map("expenses_paid") @db.Decimal(18, 2)
+  legalCostsPaid    Decimal? @map("legal_costs_paid") @db.Decimal(18, 2)
+  assessorFeesPaid  Decimal? @map("assessor_fees_paid") @db.Decimal(18, 2)
+  repairAuthPaid    Decimal? @map("repair_auth_paid") @db.Decimal(18, 2)
+  cashLieuPaid      Decimal? @map("cash_lieu_paid") @db.Decimal(18, 2)
+  glassAuthPaid     Decimal? @map("glass_auth_paid") @db.Decimal(18, 2)
+  partsAuthPaid     Decimal? @map("parts_auth_paid") @db.Decimal(18, 2)
+  towingPaid        Decimal? @map("towing_paid") @db.Decimal(18, 2)
+  additionalsPaid   Decimal? @map("additionals_paid") @db.Decimal(18, 2)
+  tpLiabilityPaid   Decimal? @map("tp_liability_paid") @db.Decimal(18, 2)
+  investigationPaid Decimal? @map("investigation_paid") @db.Decimal(18, 2)
+  totalPaid         Decimal? @map("total_paid") @db.Decimal(18, 2)
+  totalRecovery     Decimal? @map("total_recovery") @db.Decimal(18, 2)
+  totalSalvage      Decimal? @map("total_salvage") @db.Decimal(18, 2)
+
+  // Outstanding breakdown
+  ownDamageOs    Decimal? @map("own_damage_os") @db.Decimal(18, 2)
+  thirdPartyOs   Decimal? @map("third_party_os") @db.Decimal(18, 2)
+  expensesOs     Decimal? @map("expenses_os") @db.Decimal(18, 2)
+  legalCostsOs   Decimal? @map("legal_costs_os") @db.Decimal(18, 2)
+  assessorFeesOs Decimal? @map("assessor_fees_os") @db.Decimal(18, 2)
+  repairAuthOs   Decimal? @map("repair_auth_os") @db.Decimal(18, 2)
+  cashLieuOs     Decimal? @map("cash_lieu_os") @db.Decimal(18, 2)
+  glassAuthOs    Decimal? @map("glass_auth_os") @db.Decimal(18, 2)
+  tpLiabilityOs  Decimal? @map("tp_liability_os") @db.Decimal(18, 2)
+  totalOs        Decimal? @map("total_os") @db.Decimal(18, 2)
+
+  // Totals
+  totalIncurred     Decimal? @map("total_incurred") @db.Decimal(18, 2)
+  sectionSumInsured Decimal? @map("section_sum_insured") @db.Decimal(18, 2)
+
+  // Computed on insert
+  notificationGapDays   Int?     @map("notification_gap_days")
+  reserveUtilisationPct Decimal? @map("reserve_utilisation_pct") @db.Decimal(8, 2)
+  complexityWeight      Int?     @map("complexity_weight")
+  deltaFlags            Json?    @map("delta_flags")
+  isSlaBreach           Boolean  @default(false) @map("is_sla_breach")
+  daysInCurrentStatus   Int?     @map("days_in_current_status")
+
+  @@unique([claimId, snapshotDate])
+  @@index([claimId])
+  @@index([snapshotDate])
+  @@index([handler])
+  @@index([claimStatus])
+  @@index([secondaryStatus])
+  @@index([cause])
+  @@index([broker])
+  @@index([isSlaBreach])
+  @@index([importRunId])
+  @@map("claim_snapshots")
+}
+
+// ── Payments (Report 2) ───────────────────────────────────────────────────────
+
+model Payment {
+  id               String    @id @default(uuid()) @db.Uuid
+  importRunId      String    @map("import_run_id") @db.Uuid
+  claimId          String    @map("claim_id")
+  handler          String?
+  chequeNo         String?   @map("cheque_no")
+  payee            String?
+  payeeVatNr       String?   @map("payee_vat_nr")
+  paymentType      String?   @map("payment_type")
+  requestedBy      String?   @map("requested_by")
+  requestedDate    DateTime? @map("requested_date") @db.Date
+  authorisedDate   DateTime? @map("authorised_date") @db.Date
+  printedDate      DateTime? @map("printed_date") @db.Date
+  grossPaidInclVat Decimal?  @map("gross_paid_incl_vat") @db.Decimal(18, 2)
+  grossPaidExclVat Decimal?  @map("gross_paid_excl_vat") @db.Decimal(18, 2)
+  netPaidInclVat   Decimal?  @map("net_paid_incl_vat") @db.Decimal(18, 2)
+  broker           String?
+  policyNumber     String?   @map("policy_number")
+  insured          String?
+  claimStatus      String?   @map("claim_status")
+
+  // Computed integrity flags
+  sameDayAuthPrint   Boolean @default(false) @map("same_day_auth_print")
+  selfAuthorised     Boolean @default(false) @map("self_authorised")
+  daysRequestToprint Int?    @map("days_request_to_print")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([claimId])
+  @@index([payeeVatNr])
+  @@index([requestedBy])
+  @@index([printedDate])
+  @@map("payments")
+}
+
+// ── Premium records (Report 3) ────────────────────────────────────────────────
+
+model PremiumRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  importRunId     String   @map("import_run_id") @db.Uuid
+  month           String
+  periodDate      DateTime @map("period_date") @db.Date
+  branch          String?
+  classCode       String?  @map("class_code")
+  className       String?  @map("class_name")
+  product         String?
+  broker          String?
+  policyNumber    String?  @map("policy_number")
+  insured         String?
+  uwYear          Int?     @map("uw_year")
+  endorsementType String?  @map("endorsement_type")
+  gwp             Decimal? @db.Decimal(18, 2)
+  netWp           Decimal? @map("net_wp") @db.Decimal(18, 2)
+  quotaShareWp    Decimal? @map("quota_share_wp") @db.Decimal(18, 2)
+  gwpVat          Decimal? @map("gwp_vat") @db.Decimal(18, 2)
+  grossComm       Decimal? @map("gross_comm") @db.Decimal(18, 2)
+  netComm         Decimal? @map("net_comm") @db.Decimal(18, 2)
+  grossCommPct    Decimal? @map("gross_comm_pct") @db.Decimal(8, 4)
+  currency        String?  @default("ZAR")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([periodDate])
+  @@index([broker])
+  @@index([className])
+  @@index([endorsementType])
+  @@map("premium_records")
+}
+
+// ── Financial summaries (Report 4) ────────────────────────────────────────────
+
+model FinancialSummary {
+  id          String   @id @default(uuid()) @db.Uuid
+  importRunId String   @map("import_run_id") @db.Uuid
+  period      String
+  periodDate  DateTime @map("period_date") @db.Date
+  section     String
+  level       String
+  metric      String
+  value       Decimal  @db.Decimal(18, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([periodDate, section, level, metric])
+  @@index([periodDate])
+  @@index([section])
+  @@map("financial_summaries")
+}
+
+// ── SLA Configuration ─────────────────────────────────────────────────────────
+
+model SlaConfig {
+  id              String   @id @default(uuid()) @db.Uuid
+  secondaryStatus String   @unique @map("secondary_status")
+  maxDays         Int      @map("max_days")
+  alertRole       String   @map("alert_role")
+  priority        String   @default("standard")
+  isActive        Boolean  @default(true) @map("is_active")
+  updatedBy       String?  @map("updated_by") @db.Uuid
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("sla_config")
+}
+
+// ── Acknowledged Delays ───────────────────────────────────────────────────────
+
+model AcknowledgedDelay {
+  id              String    @id @default(uuid()) @db.Uuid
+  claimId         String    @map("claim_id")
+  secondaryStatus String    @map("secondary_status")
+  reasonType      String    @map("reason_type")
+  note            String?   @db.Text
+  expectedDate    DateTime  @map("expected_date") @db.Date
+  loggedBy        String    @map("logged_by") @db.Uuid
+  loggedAt        DateTime  @default(now()) @map("logged_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  isActive        Boolean   @default(true) @map("is_active")
+  isOverdue       Boolean   @default(false) @map("is_overdue")
+
+  logger Profile @relation(fields: [loggedBy], references: [id])
+
+  @@index([claimId])
+  @@index([isActive])
+  @@index([expectedDate])
+  @@index([loggedBy])
+  @@map("acknowledged_delays")
+}
+
+// ── Claim Flags ───────────────────────────────────────────────────────────────
+
+model ClaimFlag {
+  id          String   @id @default(uuid()) @db.Uuid
+  importRunId String   @map("import_run_id") @db.Uuid
+  claimId     String   @map("claim_id")
+  flagType    FlagType @map("flag_type")
+  severity    String   @default("warning")
+  detail      Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([claimId])
+  @@index([flagType])
+  @@index([importRunId])
+  @@map("claim_flags")
+}
+
+enum FlagType {
+  BIG_CLAIM
+  RESERVE_UNDER
+  RESERVE_OVER
+  DUPLICATE_INSURED
+  DUPLICATE_PAYEE_VAT
+  CASH_LIEU_AND_REPAIR
+  SAME_DAY_AUTH_PRINT
+  SELF_AUTHORISED
+  VALUE_CREEP
+  REOPENED
+  UNASSIGNED
+  SLA_BREACH
+  NO_PAYMENT_30_DAYS
+
+  @@map("flag_type")
+}
