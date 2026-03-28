@@ -72,9 +72,9 @@ body {
 }
 
 .main-scroll::-webkit-scrollbar-button {
-  display: none;
-  height: 0;
-  width: 0;
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
 }
 
 /* ── Global scrollbar fallback ──────────────────────────────────── */
@@ -93,9 +93,9 @@ body {
 }
 
 ::-webkit-scrollbar-button {
-  display: none;
-  height: 0;
-  width: 0;
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
 }
 
 /* ── Sidebar amber scrollbar ────────────────────────────────────── */
@@ -105,7 +105,8 @@ body {
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  width: 2px;
+  width: 2px !important;
+  height: 2px !important;
 }
 
 .sidebar-nav::-webkit-scrollbar-track {
@@ -115,17 +116,20 @@ body {
 .sidebar-nav::-webkit-scrollbar-thumb {
   background: #F5A800;
   border-radius: 2px;
-  max-height: 75px;
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
   background: #E09600;
 }
 
-.sidebar-nav::-webkit-scrollbar-button {
-  display: none;
-  height: 0;
-  width: 0;
+.sidebar-nav::-webkit-scrollbar-button,
+.sidebar-nav::-webkit-scrollbar-button:start:decrement,
+.sidebar-nav::-webkit-scrollbar-button:end:increment,
+.sidebar-nav::-webkit-scrollbar-button:vertical:start:increment,
+.sidebar-nav::-webkit-scrollbar-button:vertical:end:decrement {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
 }
 
 /* ── Table row hover ────────────────────────────────────────────── */
