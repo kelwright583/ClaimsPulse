@@ -328,3 +328,58 @@ enum FlagType {
 
   @@map("flag_type")
 }
+
+// ── Claim Actions (post-claim obligations) ────────────────────────────────────
+
+model ClaimAction {
+  id          String    @id @default(uuid()) @db.Uuid
+  claimId     String    @map("claim_id")
+  actionType  String    @map("action_type") // 'write_off' | 'excess_collected' | 'tp_instructed' | 'salvage_referred' | 'uw_notified' | 'repairer_chased'
+  isComplete  Boolean   @default(false) @map("is_complete")
+  completedAt DateTime? @map("completed_at")
+  completedBy String?   @map("completed_by") @db.Uuid
+  note        String?   @db.Text
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([claimId])
+  @@index([actionType])
+  @@index([isComplete])
+  @@map("claim_actions")
+}
+
+// ── Targets ───────────────────────────────────────────────────────────────────
+
+model Target {
+  id           String   @id @default(uuid()) @db.Uuid
+  metricType   String   @map("metric_type") // 'loss_ratio' | 'net_wp' | 'policy_count'
+  productLine  String?  @map("product_line") // null = aggregate
+  uwYear       Int      @map("uw_year")
+  annualTarget Decimal  @map("annual_target") @db.Decimal(18, 2)
+  setBy        String?  @map("set_by") @db.Uuid
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([metricType, productLine, uwYear])
+  @@map("targets")
+}
+
+// ── Policy Counts ─────────────────────────────────────────────────────────────
+
+model PolicyCount {
+  id            String   @id @default(uuid()) @db.Uuid
+  importRunId   String   @map("import_run_id") @db.Uuid
+  month         String
+  periodDate    DateTime @map("period_date") @db.Date
+  productLine   String?  @map("product_line")
+  inForce       Int?     @map("in_force")
+  newBusiness   Int?     @map("new_business")
+  renewals      Int?     @map("renewals")
+  lapses        Int?     @map("lapses")
+  netMovement   Int?     @map("net_movement")
+  isApproximate Boolean  @default(false) @map("is_approximate")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([periodDate, productLine])
+  @@map("policy_counts")
+}

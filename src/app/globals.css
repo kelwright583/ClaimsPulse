@@ -50,8 +50,8 @@ body {
 
 /* ── Global scrollbar ───────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 2px;
+  height: 2px;
 }
 
 ::-webkit-scrollbar-track {
@@ -67,6 +67,12 @@ body {
   background: #C7D5EA;
 }
 
+::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
 /* ── Sidebar amber scrollbar ────────────────────────────────────── */
 .sidebar-nav {
   scrollbar-width: thin;
@@ -74,7 +80,7 @@ body {
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  width: 3px;
+  width: 2px;
 }
 
 .sidebar-nav::-webkit-scrollbar-track {
@@ -84,10 +90,17 @@ body {
 .sidebar-nav::-webkit-scrollbar-thumb {
   background: #F5A800;
   border-radius: 2px;
+  max-height: 75px;
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
   background: #E09600;
+}
+
+.sidebar-nav::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
 }
 
 /* ── Table row hover ────────────────────────────────────────────── */

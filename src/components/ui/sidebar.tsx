@@ -61,6 +61,7 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
   const settingsItems = [
     { label: 'General',    href: '/settings/general',  Icon: Settings,  show: perms.canConfigureSla },
     { label: 'SLA Matrix', href: '/settings/sla-matrix', Icon: Sliders, show: perms.canConfigureSla },
+    { label: 'Targets',    href: '/settings/targets',  Icon: TrendingUp, show: hasPermission(role, 'canSeeFinancials') },
     { label: 'Users',      href: '/admin/users',        Icon: UserCog,   show: perms.canManageUsers },
   ].filter(item => item.show);
 
