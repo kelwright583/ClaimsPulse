@@ -98,15 +98,14 @@ body {
   width: 0 !important;
 }
 
-/* ── Sidebar amber scrollbar ────────────────────────────────────── */
+/* ── Sidebar: hide native scrollbar, show on hover via overlay ───── */
 .sidebar-nav {
-  scrollbar-width: thin;
-  scrollbar-color: #F5A800 transparent;
+  scrollbar-width: none; /* Firefox — hide native */
+  overflow-y: scroll;
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  width: 2px !important;
-  height: 2px !important;
+  width: 3px;
 }
 
 .sidebar-nav::-webkit-scrollbar-track {
@@ -114,19 +113,16 @@ body {
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb {
-  background: #F5A800;
-  border-radius: 2px;
+  background: transparent; /* hidden by default */
+  border-radius: 3px;
+  transition: background 0.2s;
 }
 
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
-  background: #E09600;
+.sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: #F5A800; /* amber only on hover */
 }
 
-.sidebar-nav::-webkit-scrollbar-button,
-.sidebar-nav::-webkit-scrollbar-button:start:decrement,
-.sidebar-nav::-webkit-scrollbar-button:end:increment,
-.sidebar-nav::-webkit-scrollbar-button:vertical:start:increment,
-.sidebar-nav::-webkit-scrollbar-button:vertical:end:decrement {
+.sidebar-nav::-webkit-scrollbar-button {
   display: none !important;
   height: 0 !important;
   width: 0 !important;
