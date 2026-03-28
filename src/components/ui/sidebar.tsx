@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -31,11 +31,51 @@ function getNavPermissions(role: UserRole) {
   };
 }
 
+const THUMB_HEIGHT = 76; // ~2cm at 96dpi
+
+function useCustomScrollbar(ref: React.RefObject<HTMLElement | null>) {
+  const [thumbTop, setThumbTop] = useState(0);
+  const [trackHeight, setTrackHeight] = useState(0);
+  const [canScroll, setCanScroll] = useState(false);
+
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const scrollable = scrollHeight - clientHeight;
+    setCanScroll(scrollable > 0);
+    setTrackHeight(clientHeight);
+    if (scrollable > 0) {
+      const ratio = scrollTop / scrollable;
+      setThumbTop(ratio * (clientHeight - THUMB_HEIGHT));
+    } else {
+      setThumbTop(0);
+    }
+  }, [ref]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [ref, update]);
+
+  return { thumbTop, trackHeight, canScroll };
+}
+
 export function Sidebar({ role, fullName, email }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const perms = getNavPermissions(role);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  const { thumbTop, canScroll } = useCustomScrollbar(navRef);
 
   async function handleSignOut() {
     const { createClient } = await import('@/lib/supabase/client');
@@ -76,45 +116,64 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
         />
       </div>
 
-      {/* Nav */}
-      <nav className="sidebar-nav flex-1 overflow-y-auto py-3 space-y-0.5">
-        {navItems.map(item => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/');
-          return (
-            <NavItem
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              Icon={item.Icon}
-              active={active}
-              onClick={() => setMobileOpen(false)}
-            />
-          );
-        })}
+      {/* Nav — custom scrollbar */}
+      <div className="flex-1 relative overflow-hidden">
+        <nav
+          ref={navRef}
+          className="h-full overflow-y-scroll py-3 space-y-0.5 sidebar-nav-hide-scrollbar"
+        >
+          {navItems.map(item => {
+            const active = pathname === item.href || pathname.startsWith(item.href + '/');
+            return (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                Icon={item.Icon}
+                active={active}
+                onClick={() => setMobileOpen(false)}
+              />
+            );
+          })}
 
-        {settingsItems.length > 0 && (
-          <>
-            <div className="px-4 pt-4 pb-1">
-              <span className="text-[9px] font-semibold uppercase tracking-widest text-[#6B7280] opacity-60">
-                Settings
-              </span>
-            </div>
-            {settingsItems.map(item => {
-              const active = pathname === item.href;
-              return (
-                <NavItem
-                  key={item.href}
-                  href={item.href}
-                  label={item.label}
-                  Icon={item.Icon}
-                  active={active}
-                  onClick={() => setMobileOpen(false)}
-                />
-              );
-            })}
-          </>
+          {settingsItems.length > 0 && (
+            <>
+              <div className="px-4 pt-4 pb-1">
+                <span className="text-[9px] font-semibold uppercase tracking-widest text-[#6B7280] opacity-60">
+                  Settings
+                </span>
+              </div>
+              {settingsItems.map(item => {
+                const active = pathname === item.href;
+                return (
+                  <NavItem
+                    key={item.href}
+                    href={item.href}
+                    label={item.label}
+                    Icon={item.Icon}
+                    active={active}
+                    onClick={() => setMobileOpen(false)}
+                  />
+                );
+              })}
+            </>
+          )}
+        </nav>
+
+        {/* Custom amber scrollbar thumb — fixed 2cm height, no arrows */}
+        {canScroll && (
+          <div
+            aria-hidden
+            className="absolute right-0 top-0 w-[3px] pointer-events-none"
+            style={{ height: '100%' }}
+          >
+            <div
+              className="absolute right-0 w-[3px] rounded-full bg-[#F5A800] transition-opacity"
+              style={{ height: THUMB_HEIGHT, top: thumbTop }}
+            />
+          </div>
         )}
-      </nav>
+      </div>
 
       {/* User footer */}
       <div className="border-t border-[#E8EEF8] p-3 flex-shrink-0">
