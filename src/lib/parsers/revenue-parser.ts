@@ -41,50 +41,6 @@ const MONTH_NAMES: Record<string, number> = {
   sep: 8, sept: 8, oct: 9, nov: 10, dec: 11,
 };
 
-function extractPeriodFromSheet(sheet: XLSX.WorkSheet): { periodDate: Date; month: string } {
-  const ref = sheet['!ref'];
-  if (ref) {
-    const range = XLSX.utils.decode_range(ref);
-    // Scan first 3 rows for a date
-    for (let r = 0; r < 3; r++) {
-      for (let c = range.s.c; c <= Math.min(range.e.c, 10); c++) {
-        const cell = sheet[XLSX.utils.encode_cell({ r, c })];
-        if (!cell?.v) continue;
-        const str = String(cell.v);
-        // "April 2026", "Apr 2026", "Apr-2026"
-        const longMatch = str.match(/([A-Za-z]+)\s*[-–]?\s*(\d{4})/);
-        if (longMatch) {
-          const monthIdx = MONTH_NAMES[longMatch[1].toLowerCase()];
-          const year = parseInt(longMatch[2], 10);
-          if (monthIdx !== undefined && !isNaN(year) && year > 2000) {
-            const d = new Date(year, monthIdx, 1);
-            const monthLabel = longMatch[1].charAt(0).toUpperCase() + longMatch[1].slice(1).toLowerCase();
-            return { periodDate: d, month: `${monthLabel} ${year}` };
-          }
-        }
-        // "DD Month YYYY"
-        const fullMatch = str.match(/\d{1,2}\s+([A-Za-z]+)\s+(\d{4})/);
-        if (fullMatch) {
-          const monthIdx = MONTH_NAMES[fullMatch[1].toLowerCase()];
-          const year = parseInt(fullMatch[2], 10);
-          if (monthIdx !== undefined && !isNaN(year)) {
-            const d = new Date(year, monthIdx, 1);
-            const monthLabel = fullMatch[1].charAt(0).toUpperCase() + fullMatch[1].slice(1).toLowerCase();
-            return { periodDate: d, month: `${monthLabel} ${year}` };
-          }
-        }
-      }
-    }
-  }
-  // Default: first day of current month
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth(), 1);
-  return {
-    periodDate: d,
-    month: d.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' }),
-  };
-}
-
 // Column name aliases — handles various report header naming conventions
 const COL_ALIASES: Record<string, string[]> = {
   branch: ['Branch', 'branch'],
@@ -117,30 +73,33 @@ export function parseRevenueReport(buffer: ArrayBuffer): RevenueParserResult {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-  const { periodDate, month } = extractPeriodFromSheet(sheet);
+  // Row 0 = headers, Row 1+ = data. No title rows in the xlsx format.
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: null,
+    raw: false,
+  });
 
-  // Try different header row offsets: 0, 1, 2
-  let rows: Record<string, unknown>[] = [];
-  const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1:A1');
+  // Extract period from the Month column of the first data row.
+  // In the xlsx file, Month is a Date object e.g. Date(2026, 3, 1) = April 2026.
+  let periodDate: Date = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let month = periodDate.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
 
-  for (const offset of [0, 1, 2]) {
-    const testRange = { ...range, s: { ...range.s, r: offset } };
-    const testSheet = { ...sheet, '!ref': XLSX.utils.encode_range(testRange) };
-    const testRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(testSheet, { defval: null, raw: false });
-    if (testRows.length > 0) {
-      const keys = Object.keys(testRows[0]);
-      // Check if this looks like a data row (has at least one of our expected columns)
-      const hasExpected = ['GWP', 'Net WP', 'Broker', 'Policy', 'Class', 'Gross WP', 'NWP'].some(k => keys.includes(k));
-      if (hasExpected) {
-        rows = testRows;
-        break;
+  if (rows.length > 0) {
+    const monthVal = rows[0]['Month'];
+    if (monthVal instanceof Date && !isNaN(monthVal.getTime())) {
+      periodDate = new Date(monthVal.getFullYear(), monthVal.getMonth(), 1);
+      month = periodDate.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+    } else if (typeof monthVal === 'string') {
+      const match = String(monthVal).match(/([A-Za-z]+)\s+(\d{4})/);
+      if (match) {
+        const mIdx = MONTH_NAMES[match[1].toLowerCase()];
+        const yr = parseInt(match[2], 10);
+        if (mIdx !== undefined) {
+          periodDate = new Date(yr, mIdx, 1);
+          month = `${match[1].charAt(0).toUpperCase()}${match[1].slice(1).toLowerCase()} ${yr}`;
+        }
       }
     }
-  }
-
-  // Fallback: use row 0
-  if (rows.length === 0) {
-    rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: false });
   }
 
   const mapped: MappedRevenueRow[] = rows

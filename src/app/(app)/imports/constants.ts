@@ -91,11 +91,10 @@ export const IMPORT_TYPES: ImportTypeConfig[] = [
       'Loss Address',
     ],
     notes:
-      '2-row header before column names. Row 1 is report title, Row 2 is reporting period. Parser skips automatically.',
+      'Standard xlsx format. Row 0 is the header row. Snapshot date is set to today (the upload date).',
     parserWarnings: [
-      'Rows 1–2 are skipped automatically — they contain the report title and period.',
-      'Negative amounts appear as (1,423.30) — parsed correctly as negative values.',
-      'Historical imports: snapshot date is extracted from Row 2, not the upload date.',
+      'Row 1 may contain a sequence number artefact — skipped automatically by the parser.',
+      'Snapshot date is the upload date, not a date embedded in the file.',
     ],
     successMessage:
       'Daily delta has been computed. SLA flags, claim velocity, and fraud signals have been updated.',

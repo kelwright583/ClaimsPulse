@@ -58,14 +58,20 @@ export interface ClaimsParserResult {
 
 function parseDate(value: unknown): Date | null {
   if (!value) return null;
-  if (value instanceof Date) return value;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
   if (typeof value === 'number') {
-    // Excel serial date
     const d = XLSX.SSF.parse_date_code(value);
     if (d) return new Date(d.y, d.m - 1, d.d);
   }
   if (typeof value === 'string') {
-    const d = new Date(value);
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    // DD/MM/YYYY — South African format
+    const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) {
+      return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+    }
+    const d = new Date(trimmed);
     if (!isNaN(d.getTime())) return d;
   }
   return null;
@@ -77,46 +83,8 @@ function toNum(value: unknown): number | null {
   return parseAccountingNumber(String(value));
 }
 
-function extractSnapshotDate(sheet: XLSX.WorkSheet): Date {
-  // Row 2 (zero-index 1) contains "As at DD Month YYYY" or similar
-  // Scan cells in row 1 for a date pattern
-  const ref = sheet['!ref'];
-  if (ref) {
-    const range = XLSX.utils.decode_range(ref);
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cellAddr = XLSX.utils.encode_cell({ r: 1, c });
-      const cell = sheet[cellAddr];
-      if (cell && cell.v) {
-        const str = String(cell.v);
-        // Match "As at 31 March 2025" or "31 March 2025" or "31/03/2025"
-        const monthNames: Record<string, number> = {
-          january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-          july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
-          jan: 0, feb: 1, mar: 2, apr: 3, jun: 5, jul: 6, aug: 7,
-          sep: 8, sept: 8, oct: 9, nov: 10, dec: 11,
-        };
-        // Try "DD Month YYYY"
-        const longMatch = str.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
-        if (longMatch) {
-          const day = parseInt(longMatch[1], 10);
-          const monthIdx = monthNames[longMatch[2].toLowerCase()];
-          const year = parseInt(longMatch[3], 10);
-          if (monthIdx !== undefined && !isNaN(day) && !isNaN(year)) {
-            return new Date(year, monthIdx, day);
-          }
-        }
-        // Try "DD/MM/YYYY"
-        const slashMatch = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (slashMatch) {
-          const day = parseInt(slashMatch[1], 10);
-          const month = parseInt(slashMatch[2], 10) - 1;
-          const year = parseInt(slashMatch[3], 10);
-          return new Date(year, month, day);
-        }
-      }
-    }
-  }
-  // Default to today if no date found
+function extractSnapshotDate(): Date {
+  // xlsx format has no embedded date — use today (the upload date is the snapshot date)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return today;
@@ -126,21 +94,24 @@ export function parseClaimsReport(buffer: ArrayBuffer): ClaimsParserResult {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-  // Extract snapshot date from row 2 BEFORE modifying the range
-  const snapshotDate = extractSnapshotDate(sheet);
+  const snapshotDate = extractSnapshotDate();
 
-  // Override range to start from row 3 (zero-indexed row 2) so row 3 becomes headers
-  const range = XLSX.utils.decode_range(sheet['!ref']!);
-  range.s.r = 2;
-  sheet['!ref'] = XLSX.utils.encode_range(range);
-
+  // Row 0 = headers, Row 1+ = data. No title rows in the xlsx format.
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
     raw: false,
   });
 
   const rows: MappedClaimsRow[] = rawRows
-    .filter(r => r['Claim'] != null && String(r['Claim']).trim() !== '')
+    .filter(r => {
+      const val = r['Claim'];
+      if (val == null || String(val).trim() === '') return false;
+      const str = String(val).trim();
+      // Skip sequence number artefacts — real claim IDs contain a slash (e.g. "823248/1")
+      // or are long numeric strings. Plain integers ≤ 4 chars are artefacts.
+      if (/^\d{1,4}$/.test(str)) return false;
+      return true;
+    })
     .map((r): MappedClaimsRow | null => {
       const claimId = String(r['Claim'] ?? '').trim();
       if (!claimId) return null;

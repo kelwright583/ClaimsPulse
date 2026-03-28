@@ -32,15 +32,19 @@ export interface PayeeParserResult {
 
 function parseDate(value: unknown): Date | null {
   if (!value) return null;
-  if (value instanceof Date) return value;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
   if (typeof value === 'number') {
-    // Excel serial date
     const d = XLSX.SSF.parse_date_code(value);
     if (d) return new Date(d.y, d.m - 1, d.d);
   }
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return null;
+    // DD/MM/YYYY — South African format
+    const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) {
+      return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+    }
     const d = new Date(trimmed);
     if (!isNaN(d.getTime())) return d;
   }
@@ -76,12 +80,12 @@ export function parsePayeeReport(buffer: ArrayBuffer): PayeeParserResult {
     })
     .map(r => {
       const claimId = String(getCell(r, 'Claim Number', 'Claim') ?? '').trim();
-      const handler = getCell(r, 'Claim Handler') ? String(getCell(r, 'Claim Handler')).trim() : null;
-      const requestedBy = getCell(r, 'Requested By') ? String(getCell(r, 'Requested By')).trim() : null;
+      const handler = getCell(r, 'Claims Handler', 'Claim Handler') ? String(getCell(r, 'Claims Handler', 'Claim Handler')).trim() : null;
+      const requestedBy = getCell(r, 'Payment(s) Requested By', 'Requested By') ? String(getCell(r, 'Payment(s) Requested By', 'Requested By')).trim() : null;
 
-      const requestedDate = parseDate(getCell(r, 'Date Requested', 'Request Date'));
-      const authorisedDate = parseDate(getCell(r, 'Date Authorised', 'Authorise Date'));
-      const printedDate = parseDate(getCell(r, 'Date Printed', 'Print Date'));
+      const requestedDate = parseDate(getCell(r, 'Cheque Requested', 'Date Requested'));
+      const authorisedDate = parseDate(getCell(r, 'Cheque Authorised', 'Date Authorised'));
+      const printedDate = parseDate(getCell(r, 'Cheque Printed', 'Date Printed'));
 
       // Compute integrity fields
       const sameDayAuthPrint =
@@ -103,9 +107,9 @@ export function parsePayeeReport(buffer: ArrayBuffer): PayeeParserResult {
         claimId,
         handler,
         chequeNo: getCell(r, 'Cheque No') ? String(getCell(r, 'Cheque No')).trim() : null,
-        payee: getCell(r, 'Payee Name', 'Payee') ? String(getCell(r, 'Payee Name', 'Payee')).trim() : null,
-        payeeVatNr: getCell(r, 'Payee VAT Number', 'VAT Number') ? String(getCell(r, 'Payee VAT Number', 'VAT Number')).trim() : null,
-        paymentType: getCell(r, 'Payment Type') ? String(getCell(r, 'Payment Type')).trim() : null,
+        payee: getCell(r, 'Payee', 'Payee Name') ? String(getCell(r, 'Payee', 'Payee Name')).trim() : null,
+        payeeVatNr: getCell(r, 'Payee VAT Nr', 'Payee VAT Number') ? String(getCell(r, 'Payee VAT Nr', 'Payee VAT Number')).trim() : null,
+        paymentType: getCell(r, 'Estimate Type', 'Payment Type') ? String(getCell(r, 'Estimate Type', 'Payment Type')).trim() : null,
         requestedBy,
         requestedDate,
         authorisedDate,
