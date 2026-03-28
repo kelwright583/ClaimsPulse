@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex bg-white">
         <Sidebar role={ctx.role} fullName={ctx.fullName} email={ctx.email} />
         {/* Main content — pt-14 on mobile to clear the fixed top bar */}
-        <main className="flex-1 overflow-y-auto min-h-screen pt-14 lg:pt-0">
+        <main className="main-scroll flex-1 overflow-y-auto min-h-screen pt-14 lg:pt-0">
           <div className="p-6 max-w-[1600px] mx-auto">
             <PageTransition>
               {children}

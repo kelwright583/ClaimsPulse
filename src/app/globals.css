@@ -48,7 +48,36 @@ body {
   font-family: var(--font-poppins), 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* ── Global scrollbar ───────────────────────────────────────────── */
+/* ── Main content scrollbar (right of sidebar) ──────────────────── */
+.main-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #C7D5EA transparent;
+}
+
+.main-scroll::-webkit-scrollbar {
+  width: 2px;
+}
+
+.main-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.main-scroll::-webkit-scrollbar-thumb {
+  background: #C7D5EA;
+  border-radius: 2px;
+}
+
+.main-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9FB3CC;
+}
+
+.main-scroll::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+/* ── Global scrollbar fallback ──────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 2px;
   height: 2px;
@@ -60,11 +89,7 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: #E8EEF8;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #C7D5EA;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-button {
