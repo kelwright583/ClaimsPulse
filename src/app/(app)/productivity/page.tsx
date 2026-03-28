@@ -1,8 +1,14 @@
-export default function ProductivityPage() {
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold text-[#2C2C2A] mb-2">Productivity</h1>
-      <p className="text-sm text-[#5F5E5A]">Coming soon — handler scorecards, complexity-weighted claim counts, and benchmark comparisons.</p>
-    </div>
-  );
+import { redirect } from 'next/navigation';
+import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { hasPermission } from '@/types/roles';
+import { ProductivityClient } from '@/components/productivity/productivity-client';
+
+export default async function ProductivityPage() {
+  const ctx = await getSessionContext();
+  if (!ctx) redirect('/login');
+  if (!hasPermission(ctx.role, 'canSeeTeamProductivity')) {
+    redirect('/dashboard');
+  }
+
+  return <ProductivityClient />;
 }

@@ -36,15 +36,15 @@ function formatDate(iso: string): string {
 function StatusBadge({ errored }: { errored: number }) {
   if (errored === 0) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#0F6E56]/10 text-[#0F6E56] text-xs font-medium">
-        <span className="w-1.5 h-1.5 rounded-full bg-[#0F6E56]" />
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#065F46]/10 text-[#065F46] text-xs font-medium">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#065F46]" />
         Success
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#854F0B]/10 text-[#854F0B] text-xs font-medium">
-      <span className="w-1.5 h-1.5 rounded-full bg-[#854F0B]" />
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#92400E]/10 text-[#92400E] text-xs font-medium">
+      <span className="w-1.5 h-1.5 rounded-full bg-[#92400E]" />
       {errored} error{errored !== 1 ? 's' : ''}
     </span>
   );
@@ -71,62 +71,62 @@ export function ImportHistory() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-[#D3D1C7] bg-white p-6">
-        <p className="text-sm text-[#5F5E5A] text-center">Loading history...</p>
+      <div className="rounded-lg border border-[#E8EEF8] bg-white p-6">
+        <p className="text-sm text-[#6B7280] text-center">Loading history...</p>
       </div>
     );
   }
 
   if (runs.length === 0) {
     return (
-      <div className="rounded-lg border border-[#D3D1C7] bg-white p-6">
-        <p className="text-sm text-[#5F5E5A] text-center">No imports yet. Upload your first report above.</p>
+      <div className="rounded-lg border border-[#E8EEF8] bg-white p-6">
+        <p className="text-sm text-[#6B7280] text-center">No imports yet. Upload your first report above.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-[#D3D1C7] bg-white overflow-hidden">
+    <div className="rounded-lg border border-[#E8EEF8] bg-white overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#D3D1C7] bg-[#F7F6F2]">
-              <th className="px-4 py-3 text-left text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Report Type</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Filename</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Date / Time</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Uploaded By</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Rows Read</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Created</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Updated</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[#5F5E5A] whitespace-nowrap">Status</th>
+            <tr className="border-b border-[#E8EEF8] bg-[#F4F6FA]">
+              <th className="px-4 py-3 text-left text-xs font-medium text-[#F5A800] whitespace-nowrap">Report Type</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[#F5A800] whitespace-nowrap">Filename</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[#F5A800] whitespace-nowrap">Date / Time</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[#F5A800] whitespace-nowrap">Uploaded By</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-[#F5A800] whitespace-nowrap">Rows Read</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-[#F5A800] whitespace-nowrap">Created</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-[#F5A800] whitespace-nowrap">Updated</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[#F5A800] whitespace-nowrap">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#D3D1C7]">
+          <tbody className="divide-y divide-[#E8EEF8]">
             {runs.map(run => (
-              <tr key={run.id} className="hover:bg-[#F7F6F2]/50 transition-colors">
+              <tr key={run.id} className="hover:bg-[#F4F6FA]/50 transition-colors">
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#1B3A5C]/8 text-[#1B3A5C]">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#0D2761]/8 text-[#0D2761]">
                     {REPORT_TYPE_LABELS[run.reportType] ?? run.reportType}
                   </span>
                 </td>
                 <td className="px-4 py-3 max-w-[200px]">
-                  <span className="text-[#2C2C2A] text-xs truncate block" title={run.filename}>
+                  <span className="text-[#0D2761] text-xs truncate block" title={run.filename}>
                     {run.filename}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-xs text-[#5F5E5A] whitespace-nowrap">
+                <td className="px-4 py-3 text-xs text-[#6B7280] whitespace-nowrap">
                   {formatDate(run.createdAt)}
                 </td>
-                <td className="px-4 py-3 text-xs text-[#5F5E5A] whitespace-nowrap">
+                <td className="px-4 py-3 text-xs text-[#6B7280] whitespace-nowrap">
                   {run.uploaderName ?? '—'}
                 </td>
-                <td className="px-4 py-3 text-right text-xs text-[#2C2C2A] font-medium">
+                <td className="px-4 py-3 text-right text-xs text-[#0D2761] font-medium">
                   {run.rowsRead.toLocaleString()}
                 </td>
-                <td className="px-4 py-3 text-right text-xs text-[#0F6E56] font-medium">
+                <td className="px-4 py-3 text-right text-xs text-[#065F46] font-medium">
                   {run.rowsCreated.toLocaleString()}
                 </td>
-                <td className="px-4 py-3 text-right text-xs text-[#1B3A5C] font-medium">
+                <td className="px-4 py-3 text-right text-xs text-[#0D2761] font-medium">
                   {run.rowsUpdated.toLocaleString()}
                 </td>
                 <td className="px-4 py-3">

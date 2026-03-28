@@ -1,32 +1,50 @@
 import { redirect } from 'next/navigation';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { ManagementDashboard } from '@/components/dashboard/management-dashboard';
+import { HocDashboard } from '@/components/dashboard/hoc-dashboard';
+import { TechnicianDashboard } from '@/components/dashboard/technician-dashboard';
+import { TeamLeaderDashboard } from '@/components/dashboard/team-leader-dashboard';
+import { TpDashboard } from '@/components/dashboard/tp-dashboard';
+import { SalvageDashboard } from '@/components/dashboard/salvage-dashboard';
 
 export default async function DashboardPage() {
   const ctx = await getSessionContext();
   if (!ctx) redirect('/login');
 
-  return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-[#2C2C2A]">Dashboard</h1>
-        <p className="text-sm text-[#5F5E5A] mt-1">
-          Welcome back{ctx.fullName ? `, ${ctx.fullName.split(' ')[0]}` : ''}
-        </p>
-      </div>
+  switch (ctx.role) {
+    case 'SENIOR_MANAGEMENT':
+      return <ManagementDashboard />;
 
-      <div className="bg-white border border-[#D3D1C7] rounded-xl p-8 text-center shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
-        <div className="text-[#5F5E5A] text-sm">
-          Dashboard content for <strong className="text-[#2C2C2A]">{ctx.role}</strong> role will appear here once reports are imported.
+    case 'HEAD_OF_CLAIMS':
+      return <HocDashboard />;
+
+    case 'TEAM_LEADER':
+      return <TeamLeaderDashboard />;
+
+    case 'CLAIMS_TECHNICIAN':
+      return <TechnicianDashboard />;
+
+    case 'TP_HANDLER':
+      return <TpDashboard />;
+
+    case 'SALVAGE_HANDLER':
+      return <SalvageDashboard />;
+
+    default:
+      return (
+        <div>
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold text-[#0D2761]">Dashboard</h1>
+            <p className="text-sm text-[#6B7280] mt-1">
+              Welcome back{ctx.fullName ? `, ${ctx.fullName.split(' ')[0]}` : ''}
+            </p>
+          </div>
+          <div className="bg-white border border-[#E8EEF8] rounded-xl p-8 text-center shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+            <p className="text-sm text-[#6B7280]">
+              Dashboard for role <strong className="text-[#0D2761]">{ctx.role}</strong> is coming soon.
+            </p>
+          </div>
         </div>
-        <div className="mt-4">
-          <a
-            href="/imports"
-            className="inline-flex items-center gap-2 bg-[#1B3A5C] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#162f4a] transition-colors"
-          >
-            Import your first report
-          </a>
-        </div>
-      </div>
-    </div>
-  );
+      );
+  }
 }

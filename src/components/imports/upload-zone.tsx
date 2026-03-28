@@ -1,59 +1,24 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  FileSpreadsheet, CreditCard, TrendingUp, BarChart2,
+  Download, Upload, CheckCircle2, X,
+} from 'lucide-react';
+import { IMPORT_TYPES, type ImportTypeConfig } from '@/app/(app)/imports/constants';
 
-interface ReportCard {
-  id: string;
-  name: string;
-  description: string;
-  updates: string;
-  endpoint: string;
-  accepts: string;
-  lastImported?: string | null;
-}
+type Step = 'upload' | 'preview' | 'validate' | 'importing' | 'results';
 
-const REPORT_CARDS: Omit<ReportCard, 'lastImported'>[] = [
-  {
-    id: 'claims',
-    name: 'Claims Outstanding',
-    description: 'Daily SpreadsheetML XLS report with all active claims and financial positions.',
-    updates: 'Claim snapshots, delta flags, SLA breaches, fraud signals',
-    endpoint: '/api/import/claims',
-    accepts: '.xls,.xlsx',
-  },
-  {
-    id: 'payee',
-    name: 'Payee Data',
-    description: 'Payments register with cheque details, payees, and authorisation dates.',
-    updates: 'Payment records, integrity flags, self-authorisation checks',
-    endpoint: '/api/import/payee',
-    accepts: '.xls,.xlsx',
-  },
-  {
-    id: 'revenue',
-    name: 'Revenue Analysis',
-    description: 'Monthly premium and commission data by broker and class.',
-    updates: 'Premium records, loss ratio calculations',
-    endpoint: '/api/import/revenue',
-    accepts: '.xls,.xlsx',
-  },
-  {
-    id: 'movement',
-    name: 'Movement Summary',
-    description: 'Monthly financial movement report with UPR, IBNR, and underwriting results.',
-    updates: 'Financial summaries, UW result, SASRIA, VAT sections',
-    endpoint: '/api/import/movement',
-    accepts: '.xls,.xlsx',
-  },
-];
-
-type Step = 'upload' | 'preview' | 'importing' | 'results';
+const STEPS: Step[] = ['upload', 'preview', 'validate', 'importing', 'results'];
+const STEP_LABELS = ['Upload', 'Preview', 'Validate', 'Import', 'Results'];
 
 interface ImportResult {
   success: boolean;
   rowsRead: number;
   rowsCreated: number;
   rowsUpdated: number;
+  rowsSkipped?: number;
   rowsErrored: number;
   error?: string;
   snapshotDate?: string;
@@ -63,33 +28,59 @@ interface PreviewRow {
   [key: string]: unknown;
 }
 
-function formatDate(iso: string | null | undefined): string {
+const FREQUENCY_STYLES: Record<string, { bg: string; text: string }> = {
+  Daily:      { bg: '#FEF3C7', text: '#92400E' },
+  Weekly:     { bg: '#EFF6FF', text: '#1E40AF' },
+  Monthly:    { bg: '#F4F6FA', text: '#6B7280' },
+  'On demand':{ bg: '#F4F6FA', text: '#6B7280' },
+};
+
+const REPORT_ICONS: Record<string, LucideIcon> = {
+  claims:   FileSpreadsheet,
+  payee:    CreditCard,
+  revenue:  TrendingUp,
+  movement: BarChart2,
+};
+
+function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('en-ZA', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export function UploadZone() {
-  const [activeCard, setActiveCard] = useState<ReportCard | null>(null);
+  const [activeConfig, setActiveConfig] = useState<ImportTypeConfig | null>(null);
   const [step, setStep] = useState<Step>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [previewHeaders, setPreviewHeaders] = useState<string[]>([]);
+  const [previewRowCount, setPreviewRowCount] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+  const [showColumns, setShowColumns] = useState(false);
+  const [missingColumns, setMissingColumns] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [dragOver, setDragOver] = useState(false);
   const [history, setHistory] = useState<Record<string, string | null>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch last import date per report type
   useEffect(() => {
     fetch('/api/import/history')
       .then(r => r.json())
       .then((data: Array<{ reportType: string; createdAt: string }>) => {
         const map: Record<string, string | null> = {};
         for (const run of data) {
-          const key = run.reportType.toLowerCase().replace('_outstanding', '').replace('_analysis', '').replace('_summary', '');
+          const key = run.reportType
+            .toLowerCase()
+            .replace('_outstanding', '')
+            .replace('_analysis', '')
+            .replace('_summary', '');
           if (!map[key]) map[key] = run.createdAt;
         }
         setHistory(map);
@@ -97,78 +88,126 @@ export function UploadZone() {
       .catch(() => {});
   }, []);
 
-  const openModal = (card: Omit<ReportCard, 'lastImported'>) => {
-    const lastImported = history[card.id] ?? null;
-    setActiveCard({ ...card, lastImported });
+  const refreshHistory = () => {
+    fetch('/api/import/history')
+      .then(r => r.json())
+      .then((data: Array<{ reportType: string; createdAt: string }>) => {
+        const map: Record<string, string | null> = {};
+        for (const run of data) {
+          const key = run.reportType
+            .toLowerCase()
+            .replace('_outstanding', '')
+            .replace('_analysis', '')
+            .replace('_summary', '');
+          if (!map[key]) map[key] = run.createdAt;
+        }
+        setHistory(map);
+      })
+      .catch(() => {});
+  };
+
+  const openModal = (config: ImportTypeConfig) => {
+    setActiveConfig(config);
     setStep('upload');
     setFile(null);
     setPreview([]);
     setPreviewHeaders([]);
+    setPreviewRowCount(0);
+    setMissingColumns([]);
     setResult(null);
     setProgress(0);
+    setShowColumns(false);
+    setImporting(false);
   };
 
   const closeModal = () => {
-    setActiveCard(null);
+    setActiveConfig(null);
     setStep('upload');
     setFile(null);
     setPreview([]);
     setPreviewHeaders([]);
+    setPreviewRowCount(0);
+    setMissingColumns([]);
     setResult(null);
     setImporting(false);
     setProgress(0);
+    setShowColumns(false);
   };
 
-  const handleFile = useCallback(async (f: File) => {
-    setFile(f);
-    // Generate preview using dynamic import of SheetJS
-    try {
-      const XLSX = await import('xlsx');
-      const buffer = await f.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
+  const handleFile = useCallback(
+    async (f: File) => {
+      if (!activeConfig) return;
+      setFile(f);
 
-      // Determine if we need to skip rows (claims report has 2 header rows)
-      const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1');
-      // Try to detect if row 3 is the real header by looking at row indices
-      // For claims report, offset by 2; for others, use row 0
-      const isClaimsLike = activeCard?.id === 'claims';
-      if (isClaimsLike) {
-        const claimsRange = { ...range, s: { ...range.s, r: 2 } };
-        sheet['!ref'] = XLSX.utils.encode_range(claimsRange);
+      if (activeConfig.key === 'movement') {
+        // Movement has non-standard structure — skip preview
+        setPreview([]);
+        setPreviewHeaders([]);
+        setPreviewRowCount(0);
+        setStep('preview');
+        return;
       }
 
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-        defval: null,
-        raw: false,
-      });
+      try {
+        const XLSX = await import('xlsx');
+        const buffer = await f.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
 
-      const first10 = rows.slice(0, 10) as PreviewRow[];
-      if (first10.length > 0) {
-        setPreviewHeaders(Object.keys(first10[0]).slice(0, 12)); // show first 12 columns
-        setPreview(first10);
+        const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1');
+        if (activeConfig.key === 'claims') {
+          // Skip 2-row header
+          const claimsRange = { ...range, s: { ...range.s, r: 2 } };
+          sheet['!ref'] = XLSX.utils.encode_range(claimsRange);
+        }
+
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+          defval: null,
+          raw: false,
+        });
+
+        setPreviewRowCount(rows.length);
+        const first20 = rows.slice(0, 20) as PreviewRow[];
+        if (first20.length > 0) {
+          setPreviewHeaders(Object.keys(first20[0]));
+          setPreview(first20);
+        }
+      } catch {
+        setPreview([]);
+        setPreviewHeaders([]);
       }
-    } catch {
-      setPreview([]);
-      setPreviewHeaders([]);
-    }
-    setStep('preview');
-  }, [activeCard]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
-  }, [handleFile]);
+      setStep('preview');
+    },
+    [activeConfig]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const f = e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    },
+    [handleFile]
+  );
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (f) handleFile(f);
   };
 
+  const runValidate = () => {
+    if (!activeConfig) return;
+    const missing = activeConfig.requiredColumns.filter(
+      col => !previewHeaders.includes(col)
+    );
+    setMissingColumns(missing);
+    setStep('validate');
+  };
+
   const runImport = async () => {
-    if (!file || !activeCard) return;
+    if (!file || !activeConfig) return;
     setStep('importing');
     setImporting(true);
     setProgress(10);
@@ -176,159 +215,278 @@ export function UploadZone() {
     const fd = new FormData();
     fd.append('file', file);
 
-    // Simulate progress
     const progressInterval = setInterval(() => {
-      setProgress(prev => Math.min(prev + 8, 85));
-    }, 500);
+      setProgress(prev => Math.min(prev + 7, 88));
+    }, 600);
 
     try {
-      const res = await fetch(activeCard.endpoint, { method: 'POST', body: fd });
+      const res = await fetch(activeConfig.endpoint, { method: 'POST', body: fd });
       clearInterval(progressInterval);
       setProgress(100);
 
       const data = await res.json();
       if (!res.ok) {
-        setResult({ success: false, rowsRead: 0, rowsCreated: 0, rowsUpdated: 0, rowsErrored: 0, error: data.error ?? 'Import failed' });
+        setResult({
+          success: false,
+          rowsRead: 0,
+          rowsCreated: 0,
+          rowsUpdated: 0,
+          rowsErrored: 0,
+          error: data.error ?? 'Import failed',
+        });
       } else {
         setResult(data);
-        // Refresh history
-        fetch('/api/import/history')
-          .then(r => r.json())
-          .then((d: Array<{ reportType: string; createdAt: string }>) => {
-            const map: Record<string, string | null> = {};
-            for (const run of d) {
-              const key = run.reportType.toLowerCase().replace('_outstanding', '').replace('_analysis', '').replace('_summary', '');
-              if (!map[key]) map[key] = run.createdAt;
-            }
-            setHistory(map);
-          })
-          .catch(() => {});
+        refreshHistory();
       }
     } catch (err) {
       clearInterval(progressInterval);
-      setResult({ success: false, rowsRead: 0, rowsCreated: 0, rowsUpdated: 0, rowsErrored: 0, error: String(err) });
+      setResult({
+        success: false,
+        rowsRead: 0,
+        rowsCreated: 0,
+        rowsUpdated: 0,
+        rowsErrored: 0,
+        error: String(err),
+      });
     }
 
     setImporting(false);
     setStep('results');
   };
 
-  const historyKey = (id: string) => {
-    return history[id] ?? null;
-  };
+  const currentStepIdx = STEPS.indexOf(step);
 
   return (
     <>
-      {/* Import type cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {REPORT_CARDS.map(card => (
-          <button
-            key={card.id}
-            onClick={() => openModal(card)}
-            className="text-left rounded-lg border border-[#D3D1C7] bg-white p-5 hover:border-[#1B3A5C] hover:shadow-sm transition-all"
+      {/* Import type cards — 2×2 grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {IMPORT_TYPES.map(config => (
+          <div
+            key={config.key}
+            className="bg-white border border-[#E8EEF8] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden"
           >
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-9 h-9 rounded-md bg-[#1B3A5C]/8 flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#1B3A5C]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                </svg>
+            <div className="p-5">
+              <div className="flex items-start gap-4">
+                {/* Blue icon circle — spec: #1E5BC6, white icon */}
+                {(() => {
+                  const Icon = REPORT_ICONS[config.key] ?? FileSpreadsheet;
+                  return (
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 icon-circle"
+                      style={{ backgroundColor: '#1E5BC6' }}
+                    >
+                      <Icon className="w-6 h-6 text-white" strokeWidth={2} />
+                    </div>
+                  );
+                })()}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <h3 className="text-sm font-semibold text-[#0D2761] leading-tight">{config.title}</h3>
+                    {(() => {
+                      const fs = FREQUENCY_STYLES[config.frequency] ?? FREQUENCY_STYLES['On demand'];
+                      return (
+                        <span
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: fs.bg, color: fs.text }}
+                        >
+                          {config.frequency}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-xs text-[#6B7280] leading-relaxed">{config.description}</p>
+                </div>
               </div>
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#0F6E56]/10 text-[#0F6E56]">
-                Upload
-              </span>
             </div>
-            <h3 className="font-medium text-[#2C2C2A] text-sm mb-1">{card.name}</h3>
-            <p className="text-xs text-[#5F5E5A] mb-3 leading-relaxed">{card.description}</p>
-            <div className="border-t border-[#D3D1C7] pt-3">
-              <p className="text-[11px] text-[#5F5E5A]">
-                Last imported:{' '}
-                <span className="text-[#2C2C2A]">
-                  {historyKey(card.id) ? formatDate(historyKey(card.id)) : 'Never'}
-                </span>
-              </p>
+
+            <div className="border-t border-[#E8EEF8] px-5 py-3 flex items-center justify-between gap-3 bg-[#F4F6FA]/50">
+              <div>
+                <p className="text-[11px] text-[#6B7280]">
+                  Last imported:{' '}
+                  <span className={history[config.key] ? 'text-[#0D2761] font-medium' : 'text-[#991B1B]'}>
+                    {history[config.key] ? formatDateTime(history[config.key]) : 'Never imported'}
+                  </span>
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a
+                  href={config.templateHref}
+                  download
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#0D2761] hover:text-[#1E5BC6] transition-colors"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <Download className="w-3.5 h-3.5" strokeWidth={2} />
+                  Template
+                </a>
+                <button
+                  onClick={() => openModal(config)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: '#F5A800', color: '#0D2761' }}
+                >
+                  Import report →
+                </button>
+              </div>
             </div>
-          </button>
+          </div>
         ))}
       </div>
 
-      {/* Modal overlay */}
-      {activeCard && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl border border-[#D3D1C7] shadow-lg w-full max-w-2xl mx-4 overflow-hidden">
+      {/* Modal */}
+      {activeConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl border border-[#E8EEF8] shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+
             {/* Modal header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#D3D1C7]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8EEF8] flex-shrink-0">
               <div>
-                <h2 className="text-base font-semibold text-[#2C2C2A]">Import: {activeCard.name}</h2>
-                <p className="text-xs text-[#5F5E5A] mt-0.5">{activeCard.updates}</p>
+                <h2 className="text-base font-semibold text-[#0D2761]">{activeConfig.title}</h2>
+                <p className="text-xs text-[#6B7280] mt-0.5">{activeConfig.notes}</p>
               </div>
-              <button
-                onClick={closeModal}
-                className="text-[#5F5E5A] hover:text-[#2C2C2A] transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
+              <button onClick={closeModal} className="text-[#6B7280] hover:text-[#0D2761] transition-colors ml-4 flex-shrink-0">
+                <X className="w-5 h-5" strokeWidth={2} />
               </button>
             </div>
 
             {/* Step indicator */}
-            <div className="flex items-center gap-0 px-6 pt-4 pb-2">
-              {(['upload', 'preview', 'importing', 'results'] as Step[]).map((s, idx) => {
-                const labels = ['Upload', 'Preview', 'Importing', 'Results'];
-                const steps: Step[] = ['upload', 'preview', 'importing', 'results'];
-                const currentIdx = steps.indexOf(step);
+            <div className="flex items-center px-6 pt-4 pb-3 border-b border-[#E8EEF8] flex-shrink-0">
+              {STEPS.map((s, idx) => {
                 const isActive = s === step;
-                const isDone = steps.indexOf(s) < currentIdx;
+                const isDone = idx < currentStepIdx;
                 return (
                   <React.Fragment key={s}>
-                    <div className="flex items-center gap-1.5">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
-                        isDone ? 'bg-[#0F6E56] text-white' :
-                        isActive ? 'bg-[#1B3A5C] text-white' :
-                        'bg-[#D3D1C7] text-[#5F5E5A]'
-                      }`}>
-                        {isDone ? '✓' : idx + 1}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
+                          isDone
+                            ? 'text-white'
+                            : isActive
+                            ? 'text-white'
+                            : 'bg-[#E8EEF8] text-[#6B7280]'
+                        }`}
+                        style={isDone ? { backgroundColor: '#065F46' } : isActive ? { backgroundColor: '#0D2761' } : {}}
+                      >
+                        {isDone ? (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                          </svg>
+                        ) : (
+                          idx + 1
+                        )}
                       </div>
-                      <span className={`text-xs font-medium ${isActive ? 'text-[#1B3A5C]' : 'text-[#5F5E5A]'}`}>
-                        {labels[idx]}
+                      <span
+                        className={`text-xs font-medium hidden sm:block ${
+                          isActive ? 'text-[#0D2761]' : isDone ? 'text-[#065F46]' : 'text-[#6B7280]'
+                        }`}
+                      >
+                        {STEP_LABELS[idx]}
                       </span>
                     </div>
-                    {idx < 3 && <div className="flex-1 h-px bg-[#D3D1C7] mx-2 min-w-[20px]" />}
+                    {idx < STEPS.length - 1 && (
+                      <div
+                        className="flex-1 h-px mx-2 min-w-[12px] transition-colors"
+                        style={{ backgroundColor: idx < currentStepIdx ? '#065F46' : '#E8EEF8' }}
+                      />
+                    )}
                   </React.Fragment>
                 );
               })}
             </div>
 
-            {/* Modal body */}
-            <div className="px-6 py-4 min-h-[240px]">
+            {/* Modal body — scrollable */}
+            <div className="px-6 py-5 overflow-y-auto flex-1 min-h-[220px]">
+
               {/* STEP: Upload */}
               {step === 'upload' && (
-                <div
-                  className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors ${
-                    dragOver ? 'border-[#1B3A5C] bg-[#1B3A5C]/5' : 'border-[#D3D1C7] hover:border-[#1B3A5C]/50'
-                  }`}
-                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={handleDrop}
-                >
-                  <svg className="w-10 h-10 text-[#D3D1C7] mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                  </svg>
-                  <p className="text-sm font-medium text-[#2C2C2A] mb-1">Drag and drop your file here</p>
-                  <p className="text-xs text-[#5F5E5A] mb-4">Accepts {activeCard.accepts} files</p>
-                  <button
+                <div>
+                  {/* Drag-drop zone */}
+                  <div
+                    className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors cursor-pointer ${
+                      dragOver
+                        ? 'border-[#F5A800] bg-[#F5A800]/5'
+                        : 'border-[#E8EEF8] hover:border-[#0D2761]/40'
+                    }`}
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 bg-[#1B3A5C] text-white text-sm font-medium rounded-md hover:bg-[#1B3A5C]/90 transition-colors"
                   >
-                    Browse files
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={activeCard.accepts}
-                    className="hidden"
-                    onChange={handleFileInput}
-                  />
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 icon-circle"
+                      style={{ backgroundColor: '#1E5BC6' }}
+                    >
+                      <Upload className="w-6 h-6 text-white" strokeWidth={2} />
+                    </div>
+                    <p className="text-sm font-semibold text-[#0D2761] mb-1">
+                      Drag and drop your file here
+                    </p>
+                    <p className="text-xs text-[#6B7280] mb-4">Accepts .xls and .xlsx files</p>
+                    <span className="inline-block px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#0D2761' }}>
+                      Browse files
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xls,.xlsx"
+                      className="hidden"
+                      onChange={handleFileInput}
+                    />
+                  </div>
+
+                  {/* Parser warnings */}
+                  {activeConfig.parserWarnings && activeConfig.parserWarnings.length > 0 && (
+                    <div className="mt-4 rounded-lg border border-[#1E5BC6]/20 bg-[#1E5BC6]/5 px-4 py-3">
+                      <p className="text-xs font-semibold text-[#1E5BC6] mb-1.5">Parser notes</p>
+                      <ul className="space-y-1">
+                        {activeConfig.parserWarnings.map((w, i) => (
+                          <li key={i} className="text-xs text-[#1E5BC6] flex items-start gap-1.5">
+                            <span className="mt-0.5 flex-shrink-0">•</span>
+                            {w}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Expected columns expandable */}
+                  <div className="mt-4">
+                    <button
+                      onClick={() => setShowColumns(v => !v)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-[#6B7280] hover:text-[#0D2761] transition-colors"
+                    >
+                      <svg
+                        className={`w-3.5 h-3.5 transition-transform ${showColumns ? 'rotate-90' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                      </svg>
+                      {showColumns ? 'Hide' : 'Show'} expected columns ({activeConfig.allColumns.length} total)
+                    </button>
+                    {showColumns && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {activeConfig.allColumns.map(col => {
+                          const isRequired = activeConfig.requiredColumns.includes(col);
+                          return (
+                            <span
+                              key={col}
+                              className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-mono ${
+                                isRequired
+                                  ? 'bg-[#F5A800]/15 text-[#92400E]'
+                                  : 'bg-[#F4F6FA] text-[#6B7280]'
+                              }`}
+                            >
+                              {isRequired && <span className="text-[#991B1B] font-bold">*</span>}
+                              {col}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {showColumns && (
+                      <p className="mt-1.5 text-[11px] text-[#6B7280]">
+                        <span className="text-[#991B1B] font-bold">*</span> Required — import will warn if missing
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -337,23 +495,48 @@ export function UploadZone() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <p className="text-sm font-medium text-[#2C2C2A]">{file?.name}</p>
-                      <p className="text-xs text-[#5F5E5A]">Preview — first {preview.length} rows</p>
+                      <p className="text-sm font-semibold text-[#0D2761]">{file?.name}</p>
+                      <p className="text-xs text-[#6B7280]">
+                        {activeConfig.key === 'movement'
+                          ? 'Preview not available for this report type'
+                          : `${previewRowCount.toLocaleString()} rows · ${previewHeaders.length} columns · showing first ${Math.min(preview.length, 20)}`}
+                      </p>
                     </div>
                     <button
-                      onClick={() => { setStep('upload'); setFile(null); setPreview([]); }}
-                      className="text-xs text-[#5F5E5A] hover:text-[#2C2C2A]"
+                      onClick={() => { setStep('upload'); setFile(null); setPreview([]); setPreviewHeaders([]); }}
+                      className="text-xs text-[#6B7280] hover:text-[#0D2761] transition-colors"
                     >
                       Change file
                     </button>
                   </div>
-                  {preview.length > 0 ? (
-                    <div className="overflow-x-auto border border-[#D3D1C7] rounded-lg">
+
+                  {activeConfig.key === 'movement' ? (
+                    <div className="rounded-lg border border-[#E8EEF8] bg-[#F4F6FA] p-6 text-center">
+                      <svg className="w-8 h-8 text-[#6B7280] mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0 1 12 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125-.504 1.125-1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375Z" />
+                      </svg>
+                      <p className="text-sm font-medium text-[#0D2761] mb-1">Preview not available</p>
+                      <p className="text-xs text-[#6B7280]">
+                        The Movement Summary uses a non-standard section-based structure. Continue to import it directly.
+                      </p>
+                    </div>
+                  ) : preview.length > 0 ? (
+                    <div className="overflow-x-auto border border-[#E8EEF8] rounded-lg">
                       <table className="text-[11px] w-full">
                         <thead>
-                          <tr className="bg-[#F7F6F2]">
+                          <tr className="bg-[#F4F6FA] border-b border-[#E8EEF8]">
                             {previewHeaders.map(h => (
-                              <th key={h} className="px-2 py-1.5 text-left font-medium text-[#5F5E5A] whitespace-nowrap border-b border-[#D3D1C7]">
+                              <th
+                                key={h}
+                                className={`px-2 py-2 text-left font-semibold whitespace-nowrap ${
+                                  activeConfig.requiredColumns.includes(h)
+                                    ? 'text-[#F5A800]'
+                                    : 'text-[#6B7280]'
+                                }`}
+                              >
+                                {activeConfig.requiredColumns.includes(h) && (
+                                  <span className="text-[#991B1B] mr-0.5">*</span>
+                                )}
                                 {h}
                               </th>
                             ))}
@@ -361,9 +544,17 @@ export function UploadZone() {
                         </thead>
                         <tbody>
                           {preview.map((row, i) => (
-                            <tr key={i} className="border-b border-[#D3D1C7] last:border-0">
+                            <tr
+                              key={i}
+                              className={`border-b border-[#E8EEF8] last:border-0 ${
+                                i % 2 === 1 ? 'bg-[#F4F6FA]/40' : ''
+                              }`}
+                            >
                               {previewHeaders.map(h => (
-                                <td key={h} className="px-2 py-1.5 text-[#2C2C2A] whitespace-nowrap max-w-[120px] truncate">
+                                <td
+                                  key={h}
+                                  className="px-2 py-1.5 text-[#0D2761] whitespace-nowrap max-w-[140px] truncate"
+                                >
                                   {row[h] != null ? String(row[h]) : '—'}
                                 </td>
                               ))}
@@ -373,27 +564,108 @@ export function UploadZone() {
                       </table>
                     </div>
                   ) : (
-                    <p className="text-sm text-[#5F5E5A]">Could not generate preview. The file will still be imported.</p>
+                    <div className="rounded-lg border border-[#E8EEF8] bg-[#F4F6FA] p-6 text-center">
+                      <p className="text-sm text-[#6B7280]">
+                        Could not generate preview. The file will still be imported.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP: Validate */}
+              {step === 'validate' && (
+                <div>
+                  <p className="text-sm font-semibold text-[#0D2761] mb-1">Column validation</p>
+                  <p className="text-xs text-[#6B7280] mb-4">
+                    Checking for required columns in <span className="font-mono text-[#0D2761]">{file?.name}</span>
+                  </p>
+
+                  <div className="space-y-1.5">
+                    {activeConfig.requiredColumns.map(col => {
+                      const found = previewHeaders.includes(col) || activeConfig.key === 'movement';
+                      return (
+                        <div
+                          key={col}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+                            found ? 'bg-[#065F46]/5' : 'bg-[#991B1B]/5'
+                          }`}
+                        >
+                          {found ? (
+                            <svg className="w-4 h-4 text-[#065F46] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4 text-[#991B1B] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          <code
+                            className={`text-xs font-mono ${
+                              found ? 'text-[#065F46]' : 'text-[#991B1B]'
+                            }`}
+                          >
+                            {col}
+                          </code>
+                          <span
+                            className={`ml-auto text-xs font-medium ${
+                              found ? 'text-[#065F46]' : 'text-[#991B1B]'
+                            }`}
+                          >
+                            {found ? 'Found' : 'Missing'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {missingColumns.length > 0 && (
+                    <div className="mt-4 rounded-lg border border-[#F5A800]/30 bg-[#F5A800]/8 px-4 py-3">
+                      <p className="text-xs font-semibold text-[#92400E] mb-1">
+                        {missingColumns.length} required column{missingColumns.length !== 1 ? 's' : ''} not found
+                      </p>
+                      <p className="text-xs text-[#92400E]">
+                        You can still proceed — these fields will be empty on import. Check your file matches the expected format.
+                      </p>
+                    </div>
+                  )}
+
+                  {missingColumns.length === 0 && activeConfig.key !== 'movement' && (
+                    <div className="mt-4 rounded-lg border border-[#065F46]/20 bg-[#065F46]/5 px-4 py-3">
+                      <p className="text-xs font-semibold text-[#065F46]">All required columns found — ready to import.</p>
+                    </div>
                   )}
                 </div>
               )}
 
               {/* STEP: Importing */}
               {step === 'importing' && (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <div className="w-full max-w-xs mb-4">
-                    <div className="flex justify-between text-xs text-[#5F5E5A] mb-1">
-                      <span>Importing...</span>
+                <div className="flex flex-col items-center justify-center py-10">
+                  <svg
+                    className="w-10 h-10 animate-spin mb-4"
+                    style={{ color: '#F5A800' }}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <p className="text-sm font-semibold text-[#0D2761] mb-1">Importing and processing…</p>
+                  <p className="text-xs text-[#6B7280] mb-4 text-center max-w-xs">
+                    This may take up to 60 seconds for large files
+                  </p>
+                  <div className="w-full max-w-xs">
+                    <div className="flex justify-between text-xs text-[#6B7280] mb-1">
+                      <span>{file?.name}</span>
                       <span>{progress}%</span>
                     </div>
-                    <div className="w-full bg-[#D3D1C7] rounded-full h-2">
+                    <div className="w-full bg-[#E8EEF8] rounded-full h-1.5">
                       <div
-                        className="bg-[#1B3A5C] h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${progress}%` }}
+                        className="h-1.5 rounded-full transition-all duration-500"
+                        style={{ width: `${progress}%`, backgroundColor: '#F5A800' }}
                       />
                     </div>
                   </div>
-                  <p className="text-sm text-[#5F5E5A]">Processing {file?.name}</p>
                 </div>
               )}
 
@@ -401,44 +673,69 @@ export function UploadZone() {
               {step === 'results' && result && (
                 <div>
                   {result.success ? (
-                    <div>
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 rounded-full bg-[#0F6E56]/10 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-[#0F6E56]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                          </svg>
+                    <>
+                      <div className="flex items-center gap-3 mb-5">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#1E5BC6' }}>
+                          <CheckCircle2 className="w-5 h-5 text-white" strokeWidth={2} />
                         </div>
-                        <p className="text-sm font-medium text-[#2C2C2A]">Import completed successfully</p>
+                        <div>
+                          <p className="text-sm font-semibold text-[#0D2761]">Import completed successfully</p>
+                          <p className="text-xs text-[#6B7280] mt-0.5">{activeConfig?.successMessage}</p>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+                      {/* 5-stat grid */}
+                      <div className="grid grid-cols-5 gap-2 mb-4">
                         {[
-                          { label: 'Rows read', value: result.rowsRead },
-                          { label: 'Created', value: result.rowsCreated },
-                          { label: 'Updated', value: result.rowsUpdated },
-                          { label: 'Errors', value: result.rowsErrored },
+                          { label: 'Rows read', value: result.rowsRead, color: 'text-[#0D2761]' },
+                          { label: 'Created', value: result.rowsCreated, color: 'text-[#065F46]' },
+                          { label: 'Updated', value: result.rowsUpdated, color: 'text-[#065F46]' },
+                          { label: 'Skipped', value: result.rowsSkipped ?? 0, color: 'text-[#92400E]' },
+                          {
+                            label: 'Errors',
+                            value: result.rowsErrored,
+                            color: result.rowsErrored > 0 ? 'text-[#991B1B]' : 'text-[#6B7280]',
+                          },
                         ].map(stat => (
-                          <div key={stat.label} className="rounded-lg border border-[#D3D1C7] p-3 text-center">
-                            <p className="text-xl font-semibold text-[#1B3A5C]">{stat.value}</p>
-                            <p className="text-xs text-[#5F5E5A] mt-0.5">{stat.label}</p>
+                          <div
+                            key={stat.label}
+                            className="rounded-lg border border-[#E8EEF8] p-3 text-center"
+                          >
+                            <p className={`text-xl font-bold tabular-nums ${stat.color}`}>{stat.value}</p>
+                            <p className="text-[10px] text-[#6B7280] mt-0.5 leading-tight">{stat.label}</p>
                           </div>
                         ))}
                       </div>
+
                       {result.snapshotDate && (
-                        <p className="text-xs text-[#5F5E5A] mt-3">
-                          Snapshot date: {new Date(result.snapshotDate).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}
+                        <p className="text-xs text-[#6B7280]">
+                          Snapshot date:{' '}
+                          <span className="font-medium text-[#0D2761]">
+                            {new Date(result.snapshotDate).toLocaleDateString('en-ZA', {
+                              day: '2-digit',
+                              month: 'long',
+                              year: 'numeric',
+                            })}
+                          </span>
                         </p>
                       )}
-                    </div>
+
+                      {missingColumns.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-[#F5A800]/30 bg-[#F5A800]/8 px-3 py-2">
+                          <p className="text-xs text-[#92400E]">
+                            Note: {missingColumns.length} required column{missingColumns.length !== 1 ? 's were' : ' was'} missing from the file.
+                          </p>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#A32D2D]/10 flex items-center justify-center flex-shrink-0">
-                        <svg className="w-4 h-4 text-[#A32D2D]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                        </svg>
+                      <div className="w-9 h-9 rounded-full bg-[#991B1B]/10 flex items-center justify-center flex-shrink-0">
+                        <X className="w-5 h-5 text-[#991B1B]" strokeWidth={2} />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-[#A32D2D]">Import failed</p>
-                        <p className="text-xs text-[#5F5E5A] mt-1">{result.error}</p>
+                        <p className="text-sm font-semibold text-[#991B1B]">Import failed</p>
+                        <p className="text-xs text-[#6B7280] mt-1 font-mono break-all">{result.error}</p>
                       </div>
                     </div>
                   )}
@@ -447,41 +744,78 @@ export function UploadZone() {
             </div>
 
             {/* Modal footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#D3D1C7] bg-[#F7F6F2]">
+            <div
+              className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#E8EEF8] flex-shrink-0"
+              style={{ backgroundColor: '#F4F6FA' }}
+            >
               {step === 'upload' && (
-                <button onClick={closeModal} className="px-4 py-2 text-sm text-[#5F5E5A] hover:text-[#2C2C2A]">
+                <button
+                  onClick={closeModal}
+                  className="px-4 py-2 text-sm text-[#6B7280] hover:text-[#0D2761] transition-colors"
+                >
                   Cancel
                 </button>
               )}
+
               {step === 'preview' && (
                 <>
-                  <button onClick={() => setStep('upload')} className="px-4 py-2 text-sm text-[#5F5E5A] hover:text-[#2C2C2A]">
+                  <button
+                    onClick={() => { setStep('upload'); setFile(null); setPreview([]); setPreviewHeaders([]); }}
+                    className="px-4 py-2 text-sm text-[#6B7280] hover:text-[#0D2761] transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={runValidate}
+                    className="px-5 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+                    style={{ backgroundColor: '#0D2761' }}
+                  >
+                    Validate →
+                  </button>
+                </>
+              )}
+
+              {step === 'validate' && (
+                <>
+                  <button
+                    onClick={() => setStep('preview')}
+                    className="px-4 py-2 text-sm text-[#6B7280] hover:text-[#0D2761] transition-colors"
+                  >
                     Back
                   </button>
                   <button
                     onClick={runImport}
-                    className="px-5 py-2 bg-[#1B3A5C] text-white text-sm font-medium rounded-md hover:bg-[#1B3A5C]/90 transition-colors"
+                    className="px-5 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    style={{ backgroundColor: '#F5A800', color: '#0D2761' }}
                   >
-                    Import now
+                    Import now →
                   </button>
                 </>
               )}
+
               {step === 'importing' && (
-                <button disabled className="px-5 py-2 bg-[#D3D1C7] text-[#5F5E5A] text-sm font-medium rounded-md cursor-not-allowed">
-                  Importing...
+                <button
+                  disabled
+                  className="px-5 py-2 rounded-lg text-sm font-semibold text-[#6B7280] bg-[#E8EEF8] cursor-not-allowed"
+                >
+                  Importing…
                 </button>
               )}
+
               {step === 'results' && (
                 <>
-                  <button
-                    onClick={() => openModal(activeCard)}
-                    className="px-4 py-2 text-sm text-[#5F5E5A] hover:text-[#2C2C2A]"
-                  >
-                    Import another
-                  </button>
+                  {activeConfig && (
+                    <button
+                      onClick={() => openModal(activeConfig)}
+                      className="px-4 py-2 text-sm text-[#6B7280] hover:text-[#0D2761] transition-colors"
+                    >
+                      Import another
+                    </button>
+                  )}
                   <button
                     onClick={closeModal}
-                    className="px-5 py-2 bg-[#1B3A5C] text-white text-sm font-medium rounded-md hover:bg-[#1B3A5C]/90 transition-colors"
+                    className="px-5 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+                    style={{ backgroundColor: '#0D2761' }}
                   >
                     Done
                   </button>

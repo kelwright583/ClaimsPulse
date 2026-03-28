@@ -1,8 +1,12 @@
-export default function SalvageWorkbenchPage() {
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold text-[#2C2C2A] mb-2">Salvage Workbench</h1>
-      <p className="text-sm text-[#5F5E5A]">Coming soon — salvage claims in process, recovery progress, and auction status.</p>
-    </div>
-  );
+import { redirect } from 'next/navigation';
+import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { hasPermission } from '@/types/roles';
+import { SalvageWorkbenchClient } from '@/components/workbenches/salvage-workbench-client';
+
+export default async function SalvageWorkbenchPage() {
+  const ctx = await getSessionContext();
+  if (!ctx) redirect('/login');
+  if (!hasPermission(ctx.role, 'canSeeSalvageWorkbench')) redirect('/dashboard');
+
+  return <SalvageWorkbenchClient />;
 }

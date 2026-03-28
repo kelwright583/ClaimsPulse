@@ -1,7 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  LayoutGrid, FileText, Clock, ArrowLeftRight, TrendingUp,
+  BarChart3, ShieldAlert, Users, RefreshCw, Upload,
+  Settings, UserCog, Sliders, LogOut, Menu,
+} from 'lucide-react';
 import { hasPermission, ROLE_LABELS, getInitials } from './sidebar-helpers';
 import type { UserRole } from '@/types/roles';
 
@@ -11,24 +17,17 @@ interface SidebarProps {
   email: string;
 }
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  permission?: keyof ReturnType<typeof getNavPermissions>;
-}
-
 function getNavPermissions(role: UserRole) {
   return {
-    canSeeFinancials: hasPermission(role, 'canSeeFinancials'),
-    canSeeAllClaims: hasPermission(role, 'canSeeAllClaims'),
+    canSeeFinancials:       hasPermission(role, 'canSeeFinancials'),
+    canSeeAllClaims:        hasPermission(role, 'canSeeAllClaims'),
     canSeeTeamProductivity: hasPermission(role, 'canSeeTeamProductivity'),
-    canConfigureSla: hasPermission(role, 'canConfigureSla'),
-    canSeeIntegrity: hasPermission(role, 'canSeeIntegrity'),
-    canSeeTpWorkbench: hasPermission(role, 'canSeeTpWorkbench'),
+    canConfigureSla:        hasPermission(role, 'canConfigureSla'),
+    canSeeIntegrity:        hasPermission(role, 'canSeeIntegrity'),
+    canSeeTpWorkbench:      hasPermission(role, 'canSeeTpWorkbench'),
     canSeeSalvageWorkbench: hasPermission(role, 'canSeeSalvageWorkbench'),
-    canUploadReports: hasPermission(role, 'canUploadReports'),
-    canManageUsers: hasPermission(role, 'canManageUsers'),
+    canUploadReports:       hasPermission(role, 'canUploadReports'),
+    canManageUsers:         hasPermission(role, 'canManageUsers'),
   };
 }
 
@@ -36,6 +35,7 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const perms = getNavPermissions(role);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   async function handleSignOut() {
     const { createClient } = await import('@/lib/supabase/client');
@@ -46,135 +46,69 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
   }
 
   const navItems = [
-    {
-      label: 'Dashboard',
-      href: '/dashboard',
-      icon: <DashboardIcon />,
-      show: true,
-    },
-    {
-      label: 'Claims',
-      href: '/claims',
-      icon: <ClaimsIcon />,
-      show: perms.canSeeAllClaims || role === 'CLAIMS_TECHNICIAN',
-    },
-    {
-      label: 'SLA Watchlist',
-      href: '/sla',
-      icon: <SlaIcon />,
-      show: true,
-    },
-    {
-      label: 'Delta',
-      href: '/delta',
-      icon: <DeltaIcon />,
-      show: perms.canSeeAllClaims,
-    },
-    {
-      label: 'Productivity',
-      href: '/productivity',
-      icon: <ProductivityIcon />,
-      show: perms.canSeeTeamProductivity,
-    },
-    {
-      label: 'Financial',
-      href: '/financial',
-      icon: <FinancialIcon />,
-      show: perms.canSeeFinancials,
-    },
-    {
-      label: 'Integrity',
-      href: '/integrity',
-      icon: <IntegrityIcon />,
-      show: perms.canSeeIntegrity,
-    },
-    {
-      label: 'TP Workbench',
-      href: '/workbenches/tp',
-      icon: <WorkbenchIcon />,
-      show: perms.canSeeTpWorkbench,
-    },
-    {
-      label: 'Salvage',
-      href: '/workbenches/salvage',
-      icon: <WorkbenchIcon />,
-      show: perms.canSeeSalvageWorkbench,
-    },
-    {
-      label: 'Import Reports',
-      href: '/imports',
-      icon: <ImportIcon />,
-      show: perms.canUploadReports,
-    },
-  ].filter((item) => item.show);
+    { label: 'Dashboard',     href: '/dashboard',          Icon: LayoutGrid,     show: true },
+    { label: 'Claims',        href: '/claims',             Icon: FileText,       show: perms.canSeeAllClaims || role === 'CLAIMS_TECHNICIAN' },
+    { label: 'SLA Watchlist', href: '/sla',                Icon: Clock,          show: true },
+    { label: 'Delta',         href: '/delta',              Icon: ArrowLeftRight,  show: perms.canSeeAllClaims },
+    { label: 'Productivity',  href: '/productivity',       Icon: TrendingUp,     show: perms.canSeeTeamProductivity },
+    { label: 'Financial',     href: '/financial',          Icon: BarChart3,      show: perms.canSeeFinancials },
+    { label: 'Integrity',     href: '/integrity',          Icon: ShieldAlert,    show: perms.canSeeIntegrity },
+    { label: 'TP Workbench',  href: '/workbenches/tp',     Icon: Users,          show: perms.canSeeTpWorkbench },
+    { label: 'Salvage',       href: '/workbenches/salvage', Icon: RefreshCw,     show: perms.canSeeSalvageWorkbench },
+    { label: 'Import Reports',href: '/imports',            Icon: Upload,         show: perms.canUploadReports },
+  ].filter(item => item.show);
 
   const settingsItems = [
-    {
-      label: 'SLA Matrix',
-      href: '/settings/sla-matrix',
-      show: perms.canConfigureSla,
-    },
-    {
-      label: 'Users',
-      href: '/admin/users',
-      show: perms.canManageUsers,
-    },
-  ].filter((item) => item.show);
+    { label: 'General',    href: '/settings/general',  Icon: Settings,  show: perms.canConfigureSla },
+    { label: 'SLA Matrix', href: '/settings/sla-matrix', Icon: Sliders, show: perms.canConfigureSla },
+    { label: 'Users',      href: '/admin/users',        Icon: UserCog,   show: perms.canManageUsers },
+  ].filter(item => item.show);
 
-  return (
-    <aside className="w-60 flex-shrink-0 bg-[#1B3A5C] flex flex-col h-full">
+  const sidebarContent = (
+    <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-            <span className="text-white font-bold text-xs">CP</span>
-          </div>
-          <div>
-            <div className="text-white font-semibold text-sm leading-tight">ClaimsPulse</div>
-            <div className="text-white/50 text-xs">Santam / SEB</div>
-          </div>
-        </div>
+      <div className="flex items-center justify-center px-5 py-4 border-b border-[#E8EEF8] flex-shrink-0">
+        <img
+          src="/logo.svg"
+          alt="ClaimsPulse — Santam Emerging Business"
+          className="h-12 w-auto"
+        />
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
-        {navItems.map((item) => {
+      <nav className="sidebar-nav flex-1 overflow-y-auto py-3 space-y-0.5">
+        {navItems.map(item => {
           const active = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
-            <Link
+            <NavItem
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                active
-                  ? 'bg-white/15 text-white font-medium'
-                  : 'text-white/70 hover:bg-white/8 hover:text-white'
-              }`}
-            >
-              <span className="flex-shrink-0 w-4 h-4">{item.icon}</span>
-              {item.label}
-            </Link>
+              label={item.label}
+              Icon={item.Icon}
+              active={active}
+              onClick={() => setMobileOpen(false)}
+            />
           );
         })}
 
         {settingsItems.length > 0 && (
           <>
-            <div className="pt-4 pb-1 px-3">
-              <span className="text-white/40 text-xs font-medium uppercase tracking-wider">Settings</span>
+            <div className="px-4 pt-4 pb-1">
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-[#6B7280] opacity-60">
+                Settings
+              </span>
             </div>
-            {settingsItems.map((item) => {
+            {settingsItems.map(item => {
               const active = pathname === item.href;
               return (
-                <Link
+                <NavItem
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    active
-                      ? 'bg-white/15 text-white font-medium'
-                      : 'text-white/70 hover:bg-white/8 hover:text-white'
-                  }`}
-                >
-                  {item.label}
-                </Link>
+                  label={item.label}
+                  Icon={item.Icon}
+                  active={active}
+                  onClick={() => setMobileOpen(false)}
+                />
               );
             })}
           </>
@@ -182,110 +116,111 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
       </nav>
 
       {/* User footer */}
-      <div className="px-3 py-4 border-t border-white/10">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg">
-          <div className="w-8 h-8 rounded-full bg-[#0F6E56] flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xs font-semibold">
+      <div className="border-t border-[#E8EEF8] p-3 flex-shrink-0">
+        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+          <div className="w-7 h-7 rounded-full bg-[#0D2761] flex items-center justify-center flex-shrink-0">
+            <span className="text-[#F5A800] text-[10px] font-bold">
               {getInitials(fullName ?? email)}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-white text-xs font-medium truncate">{fullName ?? email}</div>
-            <div className="text-white/50 text-xs">{ROLE_LABELS[role]}</div>
+            <div className="text-xs font-semibold text-[#0D2761] truncate">
+              {fullName ?? email}
+            </div>
+            <div className="text-[10px] text-[#6B7280] truncate">
+              {ROLE_LABELS[role]}
+            </div>
           </div>
+          <button
+            onClick={handleSignOut}
+            className="text-[#6B7280] hover:text-[#0D2761] transition-colors flex-shrink-0"
+            aria-label="Sign out"
+          >
+            <LogOut className="w-4 h-4" strokeWidth={2} />
+          </button>
         </div>
-        <button
-          onClick={handleSignOut}
-          className="w-full mt-2 px-3 py-2 text-left text-white/60 hover:text-white text-xs rounded-lg hover:bg-white/8 transition-colors"
-        >
-          Sign out
-        </button>
       </div>
-    </aside>
+    </div>
   );
-}
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
-function DashboardIcon() {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="1" y="1" width="6" height="6" rx="1" />
-      <rect x="9" y="1" width="6" height="6" rx="1" />
-      <rect x="1" y="9" width="6" height="6" rx="1" />
-      <rect x="9" y="9" width="6" height="6" rx="1" />
-    </svg>
+    <>
+      {/* Desktop sidebar */}
+      <aside className="hidden lg:flex w-[220px] flex-shrink-0 bg-white border-r border-[#E8EEF8] flex-col h-screen sticky top-0">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile top bar */}
+      <div className="fixed top-0 left-0 right-0 z-50 flex items-center gap-3 border-b border-[#E8EEF8] bg-white px-4 py-3 lg:hidden">
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="text-[#0D2761]"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" strokeWidth={2} />
+        </button>
+        <img src="/logo.svg" alt="ClaimsPulse" className="h-7 w-auto" />
+      </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="relative z-10 h-screen w-[260px] bg-white border-r border-[#E8EEF8] flex flex-col">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
 
-function ClaimsIcon() {
+// ── Nav item ──────────────────────────────────────────────────────
+
+import type { LucideIcon } from 'lucide-react';
+
+function NavItem({
+  href,
+  label,
+  Icon,
+  active,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  Icon: LucideIcon;
+  active: boolean;
+  onClick?: () => void;
+}) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" />
-      <path d="M5 6h6M5 9h4" />
-    </svg>
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`
+        relative flex items-center gap-3 py-2 text-sm font-medium
+        transition-colors duration-150 rounded-r-md mx-0
+        ${active
+          ? 'text-white'
+          : 'text-[#6B7280] hover:text-[#0D2761] hover:bg-[#F4F6FA]'
+        }
+      `}
+      style={{
+        paddingLeft: '16px',
+        paddingRight: '12px',
+        backgroundColor: active ? '#1E5BC6' : undefined,
+        borderLeft: active ? '3px solid #F5A800' : '3px solid transparent',
+        marginLeft: '-1px',
+      }}
+    >
+      <Icon
+        className={`flex-shrink-0 w-4 h-4 ${active ? 'opacity-100' : 'opacity-60'}`}
+        strokeWidth={2}
+      />
+      {label}
+    </Link>
   );
 }
 
-function SlaIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <circle cx="8" cy="8" r="6" />
-      <path d="M8 4.5v4l2.5 1.5" />
-    </svg>
-  );
-}
-
-function DeltaIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M8 2L14 13H2L8 2z" />
-    </svg>
-  );
-}
-
-function ProductivityIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M2 12l4-4 3 3 5-7" />
-    </svg>
-  );
-}
-
-function FinancialIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
-      <circle cx="8" cy="8" r="4" />
-      <path d="M6.5 9.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5S9.5 7 8.5 7C7.67 7 7 6.33 7 5.5S7.67 4 8.5 4 10 4.67 10 5.5" />
-    </svg>
-  );
-}
-
-function IntegrityIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M8 2L3 4.5v4C3 11 5.5 13.5 8 14c2.5-.5 5-3 5-5.5v-4L8 2z" />
-      <path d="M5.5 8l1.5 1.5 3-3" />
-    </svg>
-  );
-}
-
-function WorkbenchIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="1" y="4" width="14" height="9" rx="1" />
-      <path d="M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1" />
-      <path d="M8 7v4M6 9h4" />
-    </svg>
-  );
-}
-
-function ImportIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M8 2v8M5 7l3 3 3-3" />
-      <path d="M2 12h12" />
-    </svg>
-  );
-}

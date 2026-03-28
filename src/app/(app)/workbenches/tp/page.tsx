@@ -1,8 +1,12 @@
-export default function TpWorkbenchPage() {
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold text-[#2C2C2A] mb-2">Third Party Workbench</h1>
-      <p className="text-sm text-[#5F5E5A]">Coming soon — TP claims queue, outstanding recoveries, and payment status tracking.</p>
-    </div>
-  );
+import { redirect } from 'next/navigation';
+import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { hasPermission } from '@/types/roles';
+import { TpWorkbenchClient } from '@/components/workbenches/tp-workbench-client';
+
+export default async function TpWorkbenchPage() {
+  const ctx = await getSessionContext();
+  if (!ctx) redirect('/login');
+  if (!hasPermission(ctx.role, 'canSeeTpWorkbench')) redirect('/dashboard');
+
+  return <TpWorkbenchClient />;
 }

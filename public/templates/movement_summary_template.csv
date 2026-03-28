@@ -1,0 +1,28 @@
+ILLUSTRATIVE TEMPLATE - Actual file structure is section-based (not a flat table),,,,,,,
+This template is for reference only. The actual exported file has a different structure.,,,,,,,
+Contact your system administrator for the correct export format.,,,,,,,
+,,,,,,,
+HEADER,,,,,,,
+Period,April 2026,,,,,,
+,,,,,,,
+CLAIMS SECTION,,,,,,,
+Section,Level,Paid,OS Open,OS Close,OS Movement,Incurred
+Motor Taxi,Gross,1250000,3800000,4200000,400000,1650000
+Motor Taxi,Quota Share,(312500),(950000),(1050000),(100000),(412500)
+Motor Taxi,Net,937500,2850000,3150000,300000,1237500
+,,,,,,,
+UPR SECTION,,,,,,,
+Section,Level,UPR Open,UPR Close,UPR Movement,,
+Motor Taxi,Gross,2100000,2050000,(50000),,
+Motor Taxi,Quota Share,(525000),(512500),12500,,
+Motor Taxi,Net,1575000,1537500,(37500),,
+,,,,,,,
+SASRIA SECTION,,,,,,,
+Section,Level,Premium,Claims,Net,,,
+Motor Taxi,Gross,45000,12000,33000,,
+Motor Taxi,Net,45000,12000,33000,,
+,,,,,,,
+UW RESULT SECTION,,,,,,,
+Section,Level,U/W Result,Combined Ratio,Loss Ratio,Expense Ratio,
+Motor Taxi,Gross,(125000),108.5%,79.8%,28.7%,
+Motor Taxi,Net,(94000),107.6%,79.4%,28.2%,
