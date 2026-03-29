@@ -201,7 +201,6 @@ export async function POST(request: Request) {
           update: { ...data },
         })
       ),
-      { timeout: 20000 }
     );
     created = rowDataList.filter(({ claimId }) => !existingClaimIds.has(claimId)).length;
     updated = rowDataList.filter(({ claimId }) => existingClaimIds.has(claimId)).length;
