@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { parseMovementReport } from '@/lib/parsers/movement-parser';
 
 export async function POST(request: Request) {
+  try {
   const ctx = await getSessionContext();
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   if (!['HEAD_OF_CLAIMS', 'TEAM_LEADER'].includes(ctx.role))
@@ -98,4 +99,11 @@ export async function POST(request: Request) {
     rowsErrored: errored,
     snapshotDate: periodDate.toISOString().split('T')[0],
   });
+  } catch (err) {
+    console.error('[movement-import]', err);
+    return Response.json(
+      { error: 'Import failed', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
+  }
 }
