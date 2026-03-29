@@ -193,14 +193,18 @@ export async function POST(request: Request) {
   const errors: Array<{ claimId: string; error: string }> = [];
 
   try {
+    // Callback form supports timeout option; array form is capped at 5s by default
     await prisma.$transaction(
-      rowDataList.map(({ claimId, data }) =>
-        prisma.claimSnapshot.upsert({
-          where: { claimId_snapshotDate: { claimId, snapshotDate } },
-          create: data,
-          update: { ...data },
-        })
-      ),
+      async (tx) => {
+        for (const { claimId, data } of rowDataList) {
+          await tx.claimSnapshot.upsert({
+            where: { claimId_snapshotDate: { claimId, snapshotDate } },
+            create: data,
+            update: { ...data },
+          });
+        }
+      },
+      { timeout: 20000 }
     );
     created = rowDataList.filter(({ claimId }) => !existingClaimIds.has(claimId)).length;
     updated = rowDataList.filter(({ claimId }) => existingClaimIds.has(claimId)).length;
