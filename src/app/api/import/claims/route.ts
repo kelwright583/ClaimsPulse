@@ -10,6 +10,7 @@ import { computeFlags } from '@/lib/compute/fraud-signals';
 import { COMPLEXITY_WEIGHTS, DEFAULT_WEIGHT } from '@/lib/compute/productivity';
 
 export async function POST(request: Request) {
+  try {
   const ctx = await getSessionContext();
   if (!ctx) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -248,4 +249,11 @@ export async function POST(request: Request) {
     rowsErrored: errored,
     snapshotDate: snapshotDate.toISOString(),
   });
+  } catch (err) {
+    console.error('[claims-import]', err);
+    return Response.json(
+      { error: 'Import failed', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
+  }
 }
