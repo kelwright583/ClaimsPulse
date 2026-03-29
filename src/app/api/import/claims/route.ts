@@ -103,9 +103,6 @@ export async function POST(request: Request) {
   });
   const existingClaimIds = new Set(existingSnapshots.map(s => s.claimId));
 
-  let created = 0;
-  let updated = 0;
-  let errored = 0;
   // Pre-compute all row data objects (CPU only — no DB calls)
   const rowDataList = rows.map(row => {
     const prev = prevMap.get(row.claimId);
