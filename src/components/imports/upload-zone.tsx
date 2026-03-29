@@ -249,6 +249,14 @@ export function UploadZone() {
       } else {
         setResult(data as unknown as ImportResult);
         refreshHistory();
+        // Trigger flag computation asynchronously for claims imports (non-blocking)
+        if (activeConfig?.key === 'claims' && data.importRunId) {
+          fetch('/api/import/claims/flags', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ importRunId: data.importRunId }),
+          }).catch(() => {});
+        }
       }
     } catch (err) {
       clearInterval(progressInterval);

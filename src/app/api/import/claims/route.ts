@@ -225,13 +225,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // Compute fraud/integrity flags
-  try {
-    await computeFlags(importRun.id, snapshotDate);
-  } catch {
-    // Non-fatal — log but continue
-  }
-
   // Update ImportRun totals
   await prisma.importRun.update({
     where: { id: importRun.id },
