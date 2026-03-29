@@ -106,112 +106,123 @@ export async function POST(request: Request) {
   let created = 0;
   let updated = 0;
   let errored = 0;
+  // Pre-compute all row data objects (CPU only — no DB calls)
+  const rowDataList = rows.map(row => {
+    const prev = prevMap.get(row.claimId);
+    const deltaFlags = computeDelta(row, prev ? {
+      claimStatus: prev.claimStatus,
+      secondaryStatus: prev.secondaryStatus,
+      totalIncurred: prev.totalIncurred ? Number(prev.totalIncurred) : null,
+    } : null);
+    const daysInCurrentStatus = daysMap.get(row.claimId) ?? 0;
+    const isSlaBreach = computeSlaBreaches({ ...row, daysInCurrentStatus }, slaConfigs, snapshotDate);
+    const complexityWeight = COMPLEXITY_WEIGHTS[row.cause ?? ''] ?? DEFAULT_WEIGHT;
+
+    const notificationGapDays = row.dateOfLoss
+      ? Math.floor((snapshotDate.getTime() - new Date(row.dateOfLoss).getTime()) / 86400000)
+      : null;
+
+    const reserveUtilisationPct =
+      row.intimatedAmount && row.totalIncurred && row.intimatedAmount > 0
+        ? (row.totalIncurred / row.intimatedAmount) * 100
+        : null;
+
+    return {
+      claimId: row.claimId,
+      data: {
+        importRunId: importRun.id,
+        snapshotDate,
+        claimId: row.claimId,
+        oldClaimId: row.oldClaimId ?? null,
+        handler: row.handler ?? null,
+        claimStatus: row.claimStatus ?? null,
+        secondaryStatus: row.secondaryStatus ?? null,
+        orgUnit: row.orgUnit ?? null,
+        uwYear: row.uwYear ?? null,
+        groupDesc: row.groupDesc ?? null,
+        sectionDesc: row.sectionDesc ?? null,
+        policyNumber: row.policyNumber ?? null,
+        lossArea: row.lossArea ?? null,
+        lossAddr: row.lossAddr ?? null,
+        insured: row.insured ?? null,
+        broker: row.broker ?? null,
+        dateOfLoss: row.dateOfLoss ?? null,
+        cause: row.cause ?? null,
+        deductible: row.deductible ?? null,
+        retainedPct: row.retainedPct ?? null,
+        intimatedAmount: row.intimatedAmount ?? null,
+        ownDamagePaid: row.ownDamagePaid ?? null,
+        thirdPartyPaid: row.thirdPartyPaid ?? null,
+        expensesPaid: row.expensesPaid ?? null,
+        legalCostsPaid: row.legalCostsPaid ?? null,
+        assessorFeesPaid: row.assessorFeesPaid ?? null,
+        repairAuthPaid: row.repairAuthPaid ?? null,
+        cashLieuPaid: row.cashLieuPaid ?? null,
+        glassAuthPaid: row.glassAuthPaid ?? null,
+        partsAuthPaid: row.partsAuthPaid ?? null,
+        towingPaid: row.towingPaid ?? null,
+        additionalsPaid: row.additionalsPaid ?? null,
+        tpLiabilityPaid: row.tpLiabilityPaid ?? null,
+        investigationPaid: row.investigationPaid ?? null,
+        totalPaid: row.totalPaid ?? null,
+        totalRecovery: row.totalRecovery ?? null,
+        totalSalvage: row.totalSalvage ?? null,
+        ownDamageOs: row.ownDamageOs ?? null,
+        thirdPartyOs: row.thirdPartyOs ?? null,
+        expensesOs: row.expensesOs ?? null,
+        legalCostsOs: row.legalCostsOs ?? null,
+        assessorFeesOs: row.assessorFeesOs ?? null,
+        repairAuthOs: row.repairAuthOs ?? null,
+        cashLieuOs: row.cashLieuOs ?? null,
+        glassAuthOs: row.glassAuthOs ?? null,
+        tpLiabilityOs: row.tpLiabilityOs ?? null,
+        totalOs: row.totalOs ?? null,
+        totalIncurred: row.totalIncurred ?? null,
+        sectionSumInsured: row.sectionSumInsured ?? null,
+        notificationGapDays,
+        reserveUtilisationPct,
+        complexityWeight,
+        deltaFlags,
+        isSlaBreach,
+        daysInCurrentStatus,
+      },
+    };
+  });
+
+  // Run all upserts in a single transaction — one DB connection, sequential ops, no per-upsert round-trip overhead
+  let created = 0;
+  let updated = 0;
+  let errored = 0;
   const errors: Array<{ claimId: string; error: string }> = [];
 
-  // Upsert in parallel chunks of 50 to avoid overwhelming the connection pool
-  const CHUNK = 50;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
-    await Promise.all(
-      chunk.map(async row => {
-        try {
-          const prev = prevMap.get(row.claimId);
-          const deltaFlags = computeDelta(row, prev ? {
-            claimStatus: prev.claimStatus,
-            secondaryStatus: prev.secondaryStatus,
-            totalIncurred: prev.totalIncurred ? Number(prev.totalIncurred) : null,
-          } : null);
-          const daysInCurrentStatus = daysMap.get(row.claimId) ?? 0;
-          const isSlaBreach = computeSlaBreaches({ ...row, daysInCurrentStatus }, slaConfigs, snapshotDate);
-          const complexityWeight = COMPLEXITY_WEIGHTS[row.cause ?? ''] ?? DEFAULT_WEIGHT;
-
-          let notificationGapDays: number | null = null;
-          if (row.dateOfLoss) {
-            notificationGapDays = Math.floor(
-              (snapshotDate.getTime() - new Date(row.dateOfLoss).getTime()) / 86400000
-            );
-          }
-
-          let reserveUtilisationPct: number | null = null;
-          if (row.intimatedAmount && row.totalIncurred && row.intimatedAmount > 0) {
-            reserveUtilisationPct = (row.totalIncurred / row.intimatedAmount) * 100;
-          }
-
-          const data = {
-            importRunId: importRun.id,
-            snapshotDate,
-            claimId: row.claimId,
-            oldClaimId: row.oldClaimId ?? null,
-            handler: row.handler ?? null,
-            claimStatus: row.claimStatus ?? null,
-            secondaryStatus: row.secondaryStatus ?? null,
-            orgUnit: row.orgUnit ?? null,
-            uwYear: row.uwYear ?? null,
-            groupDesc: row.groupDesc ?? null,
-            sectionDesc: row.sectionDesc ?? null,
-            policyNumber: row.policyNumber ?? null,
-            lossArea: row.lossArea ?? null,
-            lossAddr: row.lossAddr ?? null,
-            insured: row.insured ?? null,
-            broker: row.broker ?? null,
-            dateOfLoss: row.dateOfLoss ?? null,
-            cause: row.cause ?? null,
-            deductible: row.deductible ?? null,
-            retainedPct: row.retainedPct ?? null,
-            intimatedAmount: row.intimatedAmount ?? null,
-            ownDamagePaid: row.ownDamagePaid ?? null,
-            thirdPartyPaid: row.thirdPartyPaid ?? null,
-            expensesPaid: row.expensesPaid ?? null,
-            legalCostsPaid: row.legalCostsPaid ?? null,
-            assessorFeesPaid: row.assessorFeesPaid ?? null,
-            repairAuthPaid: row.repairAuthPaid ?? null,
-            cashLieuPaid: row.cashLieuPaid ?? null,
-            glassAuthPaid: row.glassAuthPaid ?? null,
-            partsAuthPaid: row.partsAuthPaid ?? null,
-            towingPaid: row.towingPaid ?? null,
-            additionalsPaid: row.additionalsPaid ?? null,
-            tpLiabilityPaid: row.tpLiabilityPaid ?? null,
-            investigationPaid: row.investigationPaid ?? null,
-            totalPaid: row.totalPaid ?? null,
-            totalRecovery: row.totalRecovery ?? null,
-            totalSalvage: row.totalSalvage ?? null,
-            ownDamageOs: row.ownDamageOs ?? null,
-            thirdPartyOs: row.thirdPartyOs ?? null,
-            expensesOs: row.expensesOs ?? null,
-            legalCostsOs: row.legalCostsOs ?? null,
-            assessorFeesOs: row.assessorFeesOs ?? null,
-            repairAuthOs: row.repairAuthOs ?? null,
-            cashLieuOs: row.cashLieuOs ?? null,
-            glassAuthOs: row.glassAuthOs ?? null,
-            tpLiabilityOs: row.tpLiabilityOs ?? null,
-            totalOs: row.totalOs ?? null,
-            totalIncurred: row.totalIncurred ?? null,
-            sectionSumInsured: row.sectionSumInsured ?? null,
-            notificationGapDays,
-            reserveUtilisationPct,
-            complexityWeight,
-            deltaFlags,
-            isSlaBreach,
-            daysInCurrentStatus,
-          };
-
-          await prisma.claimSnapshot.upsert({
-            where: { claimId_snapshotDate: { claimId: row.claimId, snapshotDate } },
-            create: data,
-            update: { ...data },
-          });
-
-          if (existingClaimIds.has(row.claimId)) {
-            updated++;
-          } else {
-            created++;
-          }
-        } catch (err) {
-          errored++;
-          errors.push({ claimId: row.claimId, error: String(err) });
-        }
-      })
+  try {
+    await prisma.$transaction(
+      rowDataList.map(({ claimId, data }) =>
+        prisma.claimSnapshot.upsert({
+          where: { claimId_snapshotDate: { claimId, snapshotDate } },
+          create: data,
+          update: { ...data },
+        })
+      ),
+      { timeout: 20000 }
     );
+    created = rowDataList.filter(({ claimId }) => !existingClaimIds.has(claimId)).length;
+    updated = rowDataList.filter(({ claimId }) => existingClaimIds.has(claimId)).length;
+  } catch (txErr) {
+    // Transaction failed — fall back to row-by-row so partial success is recorded
+    for (const { claimId, data } of rowDataList) {
+      try {
+        await prisma.claimSnapshot.upsert({
+          where: { claimId_snapshotDate: { claimId, snapshotDate } },
+          create: data,
+          update: { ...data },
+        });
+        if (existingClaimIds.has(claimId)) { updated++; } else { created++; }
+      } catch (err) {
+        errored++;
+        errors.push({ claimId, error: String(err) });
+      }
+    }
   }
 
   // Compute fraud/integrity flags
