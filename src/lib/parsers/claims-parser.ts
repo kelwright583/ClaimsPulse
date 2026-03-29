@@ -96,10 +96,11 @@ export function parseClaimsReport(buffer: ArrayBuffer): ClaimsParserResult {
 
   const snapshotDate = extractSnapshotDate();
 
-  // Row 0 = headers, Row 1+ = data. No title rows in the xlsx format.
+  // Row 0 = headers, Row 1+ = data. range: 0 forces headers from the first row.
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
     raw: false,
+    range: 0,
   });
 
   const rows: MappedClaimsRow[] = rawRows
