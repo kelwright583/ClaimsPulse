@@ -154,16 +154,10 @@ export function UploadZone() {
         const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
         const sheet = wb.Sheets[wb.SheetNames[0]];
 
-        const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1');
-        if (activeConfig.key === 'claims') {
-          // Skip 2-row header
-          const claimsRange = { ...range, s: { ...range.s, r: 2 } };
-          sheet['!ref'] = XLSX.utils.encode_range(claimsRange);
-        }
-
         const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
           defval: null,
           raw: false,
+          range: 0,
         });
 
         setPreviewRowCount(rows.length);
