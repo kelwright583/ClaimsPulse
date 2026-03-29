@@ -224,7 +224,25 @@ export function UploadZone() {
       clearInterval(progressInterval);
       setProgress(100);
 
-      const data = await res.json();
+      const text = await res.text();
+      let data: Record<string, unknown> = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // Server returned non-JSON (HTML error page)
+        setResult({
+          success: false,
+          rowsRead: 0,
+          rowsCreated: 0,
+          rowsUpdated: 0,
+          rowsErrored: 0,
+          error: `HTTP ${res.status} — server returned a non-JSON response. Check Netlify function logs for the full error.`,
+        });
+        setImporting(false);
+        setStep('results');
+        return;
+      }
+
       if (!res.ok) {
         setResult({
           success: false,
@@ -232,10 +250,10 @@ export function UploadZone() {
           rowsCreated: 0,
           rowsUpdated: 0,
           rowsErrored: 0,
-          error: data.error ?? 'Import failed',
+          error: (data.detail as string) ?? (data.error as string) ?? `HTTP ${res.status}`,
         });
       } else {
-        setResult(data);
+        setResult(data as unknown as ImportResult);
         refreshHistory();
       }
     } catch (err) {

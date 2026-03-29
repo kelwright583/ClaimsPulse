@@ -114,7 +114,7 @@ export async function POST(request: Request) {
         rowsCreated: created,
         rowsUpdated: updated,
         rowsErrored: errored,
-        errorsJson: errors.length > 0 ? (errors as unknown as import('@prisma/client').Prisma.JsonArray) : undefined,
+        errorsJson: errors.length > 0 ? (errors as unknown as object[]) : undefined,
       },
     });
 
