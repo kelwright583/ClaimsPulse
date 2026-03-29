@@ -39,7 +39,6 @@ export async function POST(request: Request) {
 
     const { rows } = parseResult;
 
-    // Create ImportRun record
     const importRun = await prisma.importRun.create({
       data: {
         reportType: 'PAYEE',
@@ -49,27 +48,43 @@ export async function POST(request: Request) {
       },
     });
 
-    // Insert payments in chunks of 500
-    const CHUNK = 500;
-    let created = 0;
-    let updated = 0;
-    let errored = 0;
+    // Pre-fetch all existing payments that match any claimId+chequeNo in this import (single query)
+    const rowsWithCheque = rows.filter(r => r.chequeNo);
+    const existingPayments = rowsWithCheque.length > 0
+      ? await prisma.payment.findMany({
+          where: {
+            OR: rowsWithCheque.map(r => ({ claimId: r.claimId, chequeNo: r.chequeNo! })),
+          },
+          select: { id: true, claimId: true, chequeNo: true },
+        })
+      : [];
+
+    // Map "claimId:chequeNo" → payment id for O(1) lookup
+    const existingMap = new Map(
+      existingPayments.map(p => [`${p.claimId}:${p.chequeNo}`, p.id])
+    );
+
+    const toCreate: typeof rows = [];
+    const toUpdate: Array<{ id: string; row: (typeof rows)[number] }> = [];
+
+    for (const row of rows) {
+      const key = row.chequeNo ? `${row.claimId}:${row.chequeNo}` : null;
+      const existingId = key ? existingMap.get(key) : undefined;
+      if (existingId) {
+        toUpdate.push({ id: existingId, row });
+      } else {
+        toCreate.push(row);
+      }
+    }
+
     const errors: Array<{ claimId: string; error: string }> = [];
 
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
-      for (const row of chunk) {
-        try {
-          // Check for existing payment by claimId + chequeNo (if chequeNo present)
-          let existing = null;
-          if (row.chequeNo) {
-            existing = await prisma.payment.findFirst({
-              where: { claimId: row.claimId, chequeNo: row.chequeNo },
-              select: { id: true },
-            });
-          }
-
-          const data = {
+    // Bulk-create new rows
+    let created = 0;
+    if (toCreate.length > 0) {
+      try {
+        const result = await prisma.payment.createMany({
+          data: toCreate.map(row => ({
             importRunId: importRun.id,
             claimId: row.claimId,
             handler: row.handler ?? null,
@@ -91,23 +106,84 @@ export async function POST(request: Request) {
             sameDayAuthPrint: row.sameDayAuthPrint,
             selfAuthorised: row.selfAuthorised,
             daysRequestToprint: row.daysRequestToprint ?? null,
-          };
-
-          if (existing) {
-            await prisma.payment.update({ where: { id: existing.id }, data });
-            updated++;
-          } else {
-            await prisma.payment.create({ data });
+          })),
+          skipDuplicates: true,
+        });
+        created = result.count;
+      } catch (err) {
+        // Fall back to row-by-row if createMany fails
+        for (const row of toCreate) {
+          try {
+            await prisma.payment.create({
+              data: {
+                importRunId: importRun.id,
+                claimId: row.claimId,
+                handler: row.handler ?? null,
+                chequeNo: row.chequeNo ?? null,
+                payee: row.payee ?? null,
+                payeeVatNr: row.payeeVatNr ?? null,
+                paymentType: row.paymentType ?? null,
+                requestedBy: row.requestedBy ?? null,
+                requestedDate: row.requestedDate ?? null,
+                authorisedDate: row.authorisedDate ?? null,
+                printedDate: row.printedDate ?? null,
+                grossPaidInclVat: row.grossPaidInclVat ?? null,
+                grossPaidExclVat: row.grossPaidExclVat ?? null,
+                netPaidInclVat: row.netPaidInclVat ?? null,
+                broker: row.broker ?? null,
+                policyNumber: row.policyNumber ?? null,
+                insured: row.insured ?? null,
+                claimStatus: row.claimStatus ?? null,
+                sameDayAuthPrint: row.sameDayAuthPrint,
+                selfAuthorised: row.selfAuthorised,
+                daysRequestToprint: row.daysRequestToprint ?? null,
+              },
+            });
             created++;
+          } catch (rowErr) {
+            errors.push({ claimId: row.claimId, error: String(rowErr) });
           }
-        } catch (err) {
-          errored++;
-          errors.push({ claimId: row.claimId, error: String(err) });
         }
       }
     }
 
-    // Update ImportRun totals
+    // Update existing rows individually (typically few)
+    let updated = 0;
+    for (const { id, row } of toUpdate) {
+      try {
+        await prisma.payment.update({
+          where: { id },
+          data: {
+            importRunId: importRun.id,
+            handler: row.handler ?? null,
+            chequeNo: row.chequeNo ?? null,
+            payee: row.payee ?? null,
+            payeeVatNr: row.payeeVatNr ?? null,
+            paymentType: row.paymentType ?? null,
+            requestedBy: row.requestedBy ?? null,
+            requestedDate: row.requestedDate ?? null,
+            authorisedDate: row.authorisedDate ?? null,
+            printedDate: row.printedDate ?? null,
+            grossPaidInclVat: row.grossPaidInclVat ?? null,
+            grossPaidExclVat: row.grossPaidExclVat ?? null,
+            netPaidInclVat: row.netPaidInclVat ?? null,
+            broker: row.broker ?? null,
+            policyNumber: row.policyNumber ?? null,
+            insured: row.insured ?? null,
+            claimStatus: row.claimStatus ?? null,
+            sameDayAuthPrint: row.sameDayAuthPrint,
+            selfAuthorised: row.selfAuthorised,
+            daysRequestToprint: row.daysRequestToprint ?? null,
+          },
+        });
+        updated++;
+      } catch (err) {
+        errors.push({ claimId: row.claimId, error: String(err) });
+      }
+    }
+
+    const errored = rows.length - created - updated;
+
     await prisma.importRun.update({
       where: { id: importRun.id },
       data: {
