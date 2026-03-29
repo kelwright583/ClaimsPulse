@@ -48,43 +48,55 @@ export async function POST(request: Request) {
   let updated = 0;
   let errored = 0;
 
-  for (const row of rows) {
-    try {
-      const existing = await prisma.financialSummary.findUnique({
-        where: {
-          periodDate_section_level_metric: {
-            periodDate: row.periodDate,
-            section: row.section,
-            level: row.level,
-            metric: row.metric,
-          },
-        },
-      });
+  // All rows share the same periodDate — fetch existing records in one query
+  const existing = await prisma.financialSummary.findMany({
+    where: { periodDate },
+    select: { id: true, section: true, level: true, metric: true },
+  });
+  const existingMap = new Map(
+    existing.map(r => [`${r.section}:${r.level}:${r.metric}`, r.id])
+  );
 
-      if (existing) {
+  const toCreate = rows.filter(r => !existingMap.has(`${r.section}:${r.level}:${r.metric}`));
+  const toUpdate = rows
+    .filter(r => existingMap.has(`${r.section}:${r.level}:${r.metric}`))
+    .map(r => ({ id: existingMap.get(`${r.section}:${r.level}:${r.metric}`)!, row: r }));
+
+  // Bulk insert new rows
+  if (toCreate.length > 0) {
+    try {
+      const result = await prisma.financialSummary.createMany({
+        data: toCreate.map(row => ({
+          importRunId: importRun.id,
+          period: row.period,
+          periodDate: row.periodDate,
+          section: row.section,
+          level: row.level,
+          metric: row.metric,
+          value: row.value,
+        })),
+        skipDuplicates: true,
+      });
+      created = result.count;
+    } catch {
+      errored += toCreate.length;
+    }
+  }
+
+  // Update existing rows in parallel
+  await Promise.all(
+    toUpdate.map(async ({ id, row }) => {
+      try {
         await prisma.financialSummary.update({
-          where: { id: existing.id },
+          where: { id },
           data: { value: row.value, importRunId: importRun.id },
         });
         updated++;
-      } else {
-        await prisma.financialSummary.create({
-          data: {
-            importRunId: importRun.id,
-            period: row.period,
-            periodDate: row.periodDate,
-            section: row.section,
-            level: row.level,
-            metric: row.metric,
-            value: row.value,
-          },
-        });
-        created++;
+      } catch {
+        errored++;
       }
-    } catch {
-      errored++;
-    }
-  }
+    })
+  );
 
   await prisma.importRun.update({
     where: { id: importRun.id },

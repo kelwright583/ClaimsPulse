@@ -47,34 +47,63 @@ export async function POST(request: Request) {
   let created = 0;
   let errored = 0;
 
-  for (const row of rows) {
-    try {
-      await prisma.premiumRecord.create({
-        data: {
-          importRunId: importRun.id,
-          month: row.month,
-          periodDate: row.periodDate,
-          branch: row.branch,
-          classCode: row.classCode,
-          className: row.className,
-          product: row.product,
-          broker: row.broker,
-          policyNumber: row.policyNumber,
-          insured: row.insured,
-          uwYear: row.uwYear,
-          endorsementType: row.endorsementType,
-          gwp: row.gwp,
-          netWp: row.netWp,
-          quotaShareWp: row.quotaShareWp,
-          gwpVat: row.gwpVat,
-          grossComm: row.grossComm,
-          netComm: row.netComm,
-          grossCommPct: row.grossCommPct,
-        },
-      });
-      created++;
-    } catch {
-      errored++;
+  try {
+    const result = await prisma.premiumRecord.createMany({
+      data: rows.map(row => ({
+        importRunId: importRun.id,
+        month: row.month,
+        periodDate: row.periodDate,
+        branch: row.branch,
+        classCode: row.classCode,
+        className: row.className,
+        product: row.product,
+        broker: row.broker,
+        policyNumber: row.policyNumber,
+        insured: row.insured,
+        uwYear: row.uwYear,
+        endorsementType: row.endorsementType,
+        gwp: row.gwp,
+        netWp: row.netWp,
+        quotaShareWp: row.quotaShareWp,
+        gwpVat: row.gwpVat,
+        grossComm: row.grossComm,
+        netComm: row.netComm,
+        grossCommPct: row.grossCommPct,
+      })),
+      skipDuplicates: true,
+    });
+    created = result.count;
+  } catch {
+    // Fall back to row-by-row so partial success is still recorded
+    for (const row of rows) {
+      try {
+        await prisma.premiumRecord.create({
+          data: {
+            importRunId: importRun.id,
+            month: row.month,
+            periodDate: row.periodDate,
+            branch: row.branch,
+            classCode: row.classCode,
+            className: row.className,
+            product: row.product,
+            broker: row.broker,
+            policyNumber: row.policyNumber,
+            insured: row.insured,
+            uwYear: row.uwYear,
+            endorsementType: row.endorsementType,
+            gwp: row.gwp,
+            netWp: row.netWp,
+            quotaShareWp: row.quotaShareWp,
+            gwpVat: row.gwpVat,
+            grossComm: row.grossComm,
+            netComm: row.netComm,
+            grossCommPct: row.grossCommPct,
+          },
+        });
+        created++;
+      } catch {
+        errored++;
+      }
     }
   }
 
