@@ -71,38 +71,28 @@ export async function POST(request: Request) {
   // Load SLA configs
   const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
 
-  // Compute daysInCurrentStatus for each claim
-  // Query: for each unique (claimId, secondaryStatus) in rows, find earliest snapshotDate
-  const claimStatusPairs = rows.map(r => ({ claimId: r.claimId, secondaryStatus: r.secondaryStatus ?? null }));
-  const uniquePairs = [...new Map(claimStatusPairs.map(p => [`${p.claimId}::${p.secondaryStatus}`, p])).values()];
+  // Compute daysInCurrentStatus — fetch all prior snapshots for these claims in one query,
+  // then find the earliest date per (claimId, secondaryStatus) in memory.
+  const claimIds = rows.map(r => r.claimId);
+  const priorSnapshotsForDays = await prisma.claimSnapshot.findMany({
+    where: { claimId: { in: claimIds }, snapshotDate: { lte: snapshotDate } },
+    select: { claimId: true, secondaryStatus: true, snapshotDate: true },
+    orderBy: { snapshotDate: 'asc' },
+  });
 
-  // Build days map using raw query approach — query per-claim earliest date with same secondary status
+  // earliest[claimId:secondaryStatus] = earliest snapshotDate
+  const earliestMap = new Map<string, Date>();
+  for (const s of priorSnapshotsForDays) {
+    const key = `${s.claimId}::${s.secondaryStatus ?? ''}`;
+    if (!earliestMap.has(key)) earliestMap.set(key, new Date(s.snapshotDate));
+  }
+
   const daysMap = new Map<string, number>();
-  if (uniquePairs.length > 0) {
-    // Batch lookup: get earliest snapshot date for each (claimId, secondaryStatus) pair
-    // Use a single query with OR conditions — or chunked individual queries
-    const DAYS_CHUNK = 200;
-    for (let i = 0; i < uniquePairs.length; i += DAYS_CHUNK) {
-      const chunk = uniquePairs.slice(i, i + DAYS_CHUNK);
-      await Promise.all(
-        chunk.map(async ({ claimId, secondaryStatus }) => {
-          const earliest = await prisma.claimSnapshot.findFirst({
-            where: {
-              claimId,
-              secondaryStatus: secondaryStatus ?? undefined,
-              snapshotDate: { lte: snapshotDate },
-            },
-            orderBy: { snapshotDate: 'asc' },
-            select: { snapshotDate: true },
-          });
-          if (earliest) {
-            const days = Math.floor(
-              (snapshotDate.getTime() - new Date(earliest.snapshotDate).getTime()) / 86400000
-            );
-            daysMap.set(claimId, days);
-          }
-        })
-      );
+  for (const row of rows) {
+    const key = `${row.claimId}::${row.secondaryStatus ?? ''}`;
+    const earliest = earliestMap.get(key);
+    if (earliest) {
+      daysMap.set(row.claimId, Math.floor((snapshotDate.getTime() - earliest.getTime()) / 86400000));
     }
   }
 
