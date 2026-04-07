@@ -6,7 +6,7 @@ import {
   FileSpreadsheet, CreditCard, TrendingUp, BarChart2,
   Download, Upload, CheckCircle2, X,
 } from 'lucide-react';
-import { IMPORT_TYPES, type ImportTypeConfig } from '@/app/(app)/imports/constants';
+import { IMPORT_TYPES, type ImportTypeConfig } from '@/app/(settings)/imports/constants';
 
 type Step = 'upload' | 'preview' | 'validate' | 'importing' | 'results';
 
