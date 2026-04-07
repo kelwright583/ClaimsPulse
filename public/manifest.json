@@ -1,7 +1,7 @@
 {
-  "name": "ClaimsPulse",
-  "short_name": "ClaimsPulse",
-  "description": "Claims intelligence platform for Santam / SEB",
+  "name": "SEB Hub",
+  "short_name": "SEB Hub",
+  "description": "Santam Emerging Business — Operations Platform",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#FFFFFF",

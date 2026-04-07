@@ -4,7 +4,9 @@ export type UserRole =
   | 'TEAM_LEADER'
   | 'CLAIMS_TECHNICIAN'
   | 'TP_HANDLER'
-  | 'SALVAGE_HANDLER';
+  | 'SALVAGE_HANDLER'
+  | 'MAILBOX_ADMIN'
+  | 'UW_ANALYST';
 
 export const ROLE_PERMISSIONS = {
   canSeeFinancials: ['SENIOR_MANAGEMENT', 'HEAD_OF_CLAIMS'] as UserRole[],
@@ -17,6 +19,13 @@ export const ROLE_PERMISSIONS = {
   canUploadReports: ['HEAD_OF_CLAIMS', 'TEAM_LEADER'] as UserRole[],
   canLogAcknowledgedDelay: ['HEAD_OF_CLAIMS', 'TEAM_LEADER', 'CLAIMS_TECHNICIAN', 'TP_HANDLER', 'SALVAGE_HANDLER'] as UserRole[],
   canManageUsers: ['HEAD_OF_CLAIMS'] as UserRole[],
+  canSeeMailbox: ['HEAD_OF_CLAIMS', 'TEAM_LEADER', 'CLAIMS_TECHNICIAN', 'TP_HANDLER', 'SALVAGE_HANDLER', 'MAILBOX_ADMIN'] as UserRole[],
+  canConfigureMailbox: ['HEAD_OF_CLAIMS', 'MAILBOX_ADMIN'] as UserRole[],
+  canSeeUnderwriting: ['HEAD_OF_CLAIMS', 'SENIOR_MANAGEMENT', 'UW_ANALYST'] as UserRole[],
+  canSeeStrategic: ['SENIOR_MANAGEMENT', 'HEAD_OF_CLAIMS'] as UserRole[],
+  canSeeProjects: ['HEAD_OF_CLAIMS', 'SENIOR_MANAGEMENT', 'TEAM_LEADER'] as UserRole[],
+  canCreateProjects: ['HEAD_OF_CLAIMS', 'SENIOR_MANAGEMENT'] as UserRole[],
+  canDeleteProjects: ['HEAD_OF_CLAIMS', 'SENIOR_MANAGEMENT'] as UserRole[],
 } as const;
 
 export function hasPermission(role: UserRole, permission: keyof typeof ROLE_PERMISSIONS): boolean {
@@ -30,4 +39,6 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   CLAIMS_TECHNICIAN: 'Claims Technician',
   TP_HANDLER: 'TP Handler',
   SALVAGE_HANDLER: 'Salvage Handler',
+  MAILBOX_ADMIN: 'Mailbox Administrator',
+  UW_ANALYST: 'UW Analyst',
 };

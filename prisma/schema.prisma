@@ -30,6 +30,8 @@ enum UserRole {
   CLAIMS_TECHNICIAN
   TP_HANDLER
   SALVAGE_HANDLER
+  MAILBOX_ADMIN
+  UW_ANALYST
 
   @@map("user_role")
 }
@@ -382,4 +384,144 @@ model PolicyCount {
 
   @@unique([periodDate, productLine])
   @@map("policy_counts")
+}
+
+// ── Triage / Mailbox Models ────────────────────────────────────────────────────
+
+model MailboxConfig {
+  id                        String   @id @default(uuid()) @db.Uuid
+  departmentName            String   @map("department_name")
+  mailboxAddress            String   @map("mailbox_address")
+  active                    Boolean  @default(true)
+  classificationInstructions String? @map("classification_instructions") @db.Text
+  urgentKeywords            String[] @map("urgent_keywords")
+  isConfigured              Boolean  @default(false) @map("is_configured")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  categories   RoutingCategory[]
+  staff        MailboxStaff[]
+  rules        RoutingRule[]
+  emailRecords EmailRecord[]
+
+  @@map("mailbox_configs")
+}
+
+model RoutingCategory {
+  id           String  @id @default(uuid()) @db.Uuid
+  mailboxId    String  @map("mailbox_id") @db.Uuid
+  name         String
+  description  String? @db.Text
+  colour       String  @default("#6B7280")
+  displayOrder Int     @default(0) @map("display_order")
+
+  mailbox MailboxConfig @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  rule    RoutingRule?
+
+  @@map("routing_categories")
+}
+
+model MailboxStaff {
+  id              String  @id @default(uuid()) @db.Uuid
+  mailboxId       String  @map("mailbox_id") @db.Uuid
+  name            String
+  email           String
+  isTeamLeader    Boolean @default(false) @map("is_team_leader")
+  isInRoundRobin  Boolean @default(true) @map("is_in_round_robin")
+  roundRobinOrder Int?    @map("round_robin_order")
+  active          Boolean @default(true)
+
+  mailbox MailboxConfig @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
+  @@map("mailbox_staff")
+}
+
+model RoutingRule {
+  id                   String  @id @default(uuid()) @db.Uuid
+  mailboxId            String  @map("mailbox_id") @db.Uuid
+  categoryId           String  @unique @map("category_id") @db.Uuid
+  categoryName         String  @map("category_name")
+  destinationFolderId  String? @map("destination_folder_id")
+  destinationFolderName String? @map("destination_folder_name")
+  alwaysUrgent         Boolean @default(false) @map("always_urgent")
+  notifyTeamLeader     Boolean @default(false) @map("notify_team_leader")
+  autoAcknowledge      Boolean @default(false) @map("auto_acknowledge")
+  acknowledgeTemplate  String? @map("acknowledge_template") @db.Text
+  tatMinutes           Int     @default(1440) @map("tat_minutes")
+  useRoundRobin        Boolean @default(true) @map("use_round_robin")
+  fixedAssigneeEmail   String? @map("fixed_assignee_email")
+  active               Boolean @default(true)
+
+  mailbox  MailboxConfig   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  category RoutingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@map("routing_rules")
+}
+
+model EmailRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  mailboxId      String    @map("mailbox_id") @db.Uuid
+  graphEmailId   String    @unique @map("graph_email_id")
+  subject        String?
+  categoryName   String?   @map("category_name")
+  senderType     String?   @map("sender_type")
+  urgent         Boolean   @default(false)
+  confidence     Decimal?  @db.Decimal(5, 2)
+  receivedAt     DateTime  @map("received_at")
+  tatDeadline    DateTime  @map("tat_deadline")
+  respondedTo    Boolean   @default(false) @map("responded_to")
+  respondedAt    DateTime? @map("responded_at")
+  tatAlertSent   Boolean   @default(false) @map("tat_alert_sent")
+  assignedToEmail String?  @map("assigned_to_email")
+  claimId        String?   @map("claim_id")
+
+  mailbox MailboxConfig @relation(fields: [mailboxId], references: [id])
+
+  @@index([graphEmailId])
+  @@index([categoryName])
+  @@index([tatDeadline])
+  @@index([claimId])
+  @@map("email_records")
+}
+
+model MailboxAuditLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  mailboxId    String    @map("mailbox_id") @db.Uuid
+  graphEmailId String    @map("graph_email_id")
+  subject      String?
+  categoryName String?   @map("category_name")
+  urgent       Boolean   @default(false)
+  senderType   String?   @map("sender_type")
+  confidence   Decimal?  @db.Decimal(5, 2)
+  reasoning    String?   @db.Text
+  actionTaken  String?   @map("action_taken")
+  assignedTo   String?   @map("assigned_to")
+  claimId      String?   @map("claim_id")
+  timestamp    DateTime  @default(now())
+
+  @@index([timestamp])
+  @@index([categoryName])
+  @@index([claimId])
+  @@map("mailbox_audit_logs")
+}
+
+// ── Underwriting Models ────────────────────────────────────────────────────────
+
+model UwSnapshot {
+  id          String    @id @default(uuid()) @db.Uuid
+  importRunId String    @map("import_run_id") @db.Uuid
+  periodDate  DateTime  @map("period_date") @db.Date
+  productLine String?   @map("product_line")
+  broker      String?
+  gwp         Decimal?  @db.Decimal(18, 2)
+  netWp       Decimal?  @map("net_wp") @db.Decimal(18, 2)
+  policyCount Int?      @map("policy_count")
+  newBusiness Int?      @map("new_business")
+  renewals    Int?
+  lapses      Int?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([periodDate])
+  @@index([productLine])
+  @@index([broker])
+  @@map("uw_snapshots")
 }

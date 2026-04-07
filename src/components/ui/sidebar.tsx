@@ -7,6 +7,7 @@ import {
   LayoutGrid, FileText, Clock, ArrowLeftRight, TrendingUp,
   BarChart3, ShieldAlert, Users, RefreshCw, Upload,
   Settings, UserCog, Sliders, LogOut, Menu,
+  Mail, AlarmClock, ScrollText, Settings2, Building2, Telescope,
 } from 'lucide-react';
 import { hasPermission, ROLE_LABELS, getInitials } from './sidebar-helpers';
 import type { UserRole } from '@/types/roles';
@@ -28,6 +29,10 @@ function getNavPermissions(role: UserRole) {
     canSeeSalvageWorkbench: hasPermission(role, 'canSeeSalvageWorkbench'),
     canUploadReports:       hasPermission(role, 'canUploadReports'),
     canManageUsers:         hasPermission(role, 'canManageUsers'),
+    canSeeMailbox:          hasPermission(role, 'canSeeMailbox'),
+    canConfigureMailbox:    hasPermission(role, 'canConfigureMailbox'),
+    canSeeUnderwriting:     hasPermission(role, 'canSeeUnderwriting'),
+    canSeeStrategic:        hasPermission(role, 'canSeeStrategic'),
   };
 }
 
@@ -85,25 +90,63 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
     router.refresh();
   }
 
-  const navItems = [
-    { label: 'Dashboard',     href: '/dashboard',          Icon: LayoutGrid,     show: true },
-    { label: 'Claims',        href: '/claims',             Icon: FileText,       show: perms.canSeeAllClaims || role === 'CLAIMS_TECHNICIAN' },
-    { label: 'SLA Watchlist', href: '/sla',                Icon: Clock,          show: true },
-    { label: 'Delta',         href: '/delta',              Icon: ArrowLeftRight,  show: perms.canSeeAllClaims },
-    { label: 'Productivity',  href: '/productivity',       Icon: TrendingUp,     show: perms.canSeeTeamProductivity },
-    { label: 'Financial',     href: '/financial',          Icon: BarChart3,      show: perms.canSeeFinancials },
-    { label: 'Integrity',     href: '/integrity',          Icon: ShieldAlert,    show: perms.canSeeIntegrity },
-    { label: 'TP Workbench',  href: '/workbenches/tp',     Icon: Users,          show: perms.canSeeTpWorkbench },
-    { label: 'Salvage',       href: '/workbenches/salvage', Icon: RefreshCw,     show: perms.canSeeSalvageWorkbench },
-    { label: 'Import Reports',href: '/imports',            Icon: Upload,         show: perms.canUploadReports },
-  ].filter(item => item.show);
-
-  const settingsItems = [
-    { label: 'General',    href: '/settings/general',  Icon: Settings,  show: perms.canConfigureSla },
-    { label: 'SLA Matrix', href: '/settings/sla-matrix', Icon: Sliders, show: perms.canConfigureSla },
-    { label: 'Targets',    href: '/settings/targets',  Icon: TrendingUp, show: hasPermission(role, 'canSeeFinancials') },
-    { label: 'Users',      href: '/admin/users',        Icon: UserCog,   show: perms.canManageUsers },
-  ].filter(item => item.show);
+  const pillars = [
+    {
+      label: 'Claims',
+      show: true,
+      items: [
+        { label: 'Dashboard',     href: '/dashboard',           Icon: LayoutGrid,   show: true },
+        { label: 'Claims',        href: '/claims',              Icon: FileText,     show: perms.canSeeAllClaims || role === 'CLAIMS_TECHNICIAN' },
+        { label: 'SLA Watchlist', href: '/sla',                 Icon: Clock,        show: true },
+        { label: 'Delta',         href: '/delta',               Icon: ArrowLeftRight, show: perms.canSeeAllClaims },
+        { label: 'Productivity',  href: '/productivity',        Icon: TrendingUp,   show: perms.canSeeTeamProductivity },
+        { label: 'Integrity',     href: '/integrity',           Icon: ShieldAlert,  show: perms.canSeeIntegrity },
+        { label: 'TP Workbench',  href: '/workbenches/tp',      Icon: Users,        show: perms.canSeeTpWorkbench },
+        { label: 'Salvage',       href: '/workbenches/salvage', Icon: RefreshCw,    show: perms.canSeeSalvageWorkbench },
+      ].filter(i => i.show),
+    },
+    {
+      label: 'Mailbox',
+      show: perms.canSeeMailbox,
+      items: [
+        { label: 'Inbox Routing', href: '/mailbox',        Icon: Mail,       show: true },
+        { label: 'TAT Monitor',   href: '/mailbox/tat',    Icon: AlarmClock, show: true },
+        { label: 'Audit Log',     href: '/mailbox/audit',  Icon: ScrollText, show: true },
+        { label: 'Setup',         href: '/mailbox/setup',  Icon: Settings2,  show: perms.canConfigureMailbox },
+      ].filter(i => i.show),
+    },
+    {
+      label: 'Underwriting',
+      show: perms.canSeeUnderwriting,
+      items: [
+        { label: 'Production',    href: '/underwriting',          Icon: Building2, show: true },
+        { label: 'Broker Health', href: '/underwriting/brokers',  Icon: BarChart3, show: true },
+      ].filter(i => i.show),
+    },
+    {
+      label: 'Finance',
+      show: perms.canSeeFinancials,
+      items: [
+        { label: 'Financial', href: '/financial', Icon: BarChart3, show: true },
+      ].filter(i => i.show),
+    },
+    {
+      label: 'Strategic',
+      show: perms.canSeeStrategic,
+      items: [
+        { label: 'Strategic View', href: '/strategic', Icon: Telescope, show: true },
+      ].filter(i => i.show),
+    },
+    {
+      label: 'Settings',
+      show: perms.canConfigureSla || perms.canUploadReports || perms.canManageUsers,
+      items: [
+        { label: 'Settings',       href: '/settings',      Icon: Settings, show: perms.canConfigureSla },
+        { label: 'Import Reports', href: '/imports',        Icon: Upload,   show: perms.canUploadReports },
+        { label: 'Users',          href: '/admin/users',   Icon: UserCog,  show: perms.canManageUsers },
+      ].filter(i => i.show),
+    },
+  ].filter(p => p.show && p.items.length > 0);
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -111,7 +154,7 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
       <div className="flex items-center justify-center px-5 py-4 border-b border-[#E8EEF8] flex-shrink-0">
         <img
           src="/logo.svg"
-          alt="ClaimsPulse — Santam Emerging Business"
+          alt="SEB Hub — Santam Emerging Business"
           className="h-12 w-auto"
         />
       </div>
@@ -122,29 +165,15 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
           ref={navRef}
           className="h-full overflow-y-scroll py-3 space-y-0.5 sidebar-nav-hide-scrollbar"
         >
-          {navItems.map(item => {
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
-              <NavItem
-                key={item.href}
-                href={item.href}
-                label={item.label}
-                Icon={item.Icon}
-                active={active}
-                onClick={() => setMobileOpen(false)}
-              />
-            );
-          })}
-
-          {settingsItems.length > 0 && (
-            <>
+          {pillars.map(pillar => (
+            <div key={pillar.label}>
               <div className="px-4 pt-4 pb-1">
                 <span className="text-[9px] font-semibold uppercase tracking-widest text-[#6B7280] opacity-60">
-                  Settings
+                  {pillar.label}
                 </span>
               </div>
-              {settingsItems.map(item => {
-                const active = pathname === item.href;
+              {pillar.items.map(item => {
+                const active = pathname === item.href || pathname.startsWith(item.href + '/');
                 return (
                   <NavItem
                     key={item.href}
@@ -156,8 +185,8 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
                   />
                 );
               })}
-            </>
-          )}
+            </div>
+          ))}
         </nav>
 
         {/* Custom amber scrollbar thumb — fixed 2cm height, no arrows */}
@@ -219,7 +248,7 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
         >
           <Menu className="w-5 h-5" strokeWidth={2} />
         </button>
-        <img src="/logo.svg" alt="ClaimsPulse" className="h-7 w-auto" />
+        <img src="/logo.svg" alt="SEB Hub" className="h-7 w-auto" />
       </div>
 
       {/* Mobile drawer */}
@@ -283,4 +312,3 @@ function NavItem({
     </Link>
   );
 }
-

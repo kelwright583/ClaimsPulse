@@ -10,8 +10,8 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "ClaimsPulse",
-  description: "Claims intelligence platform — Santam / SEB",
+  title: "SEB Hub",
+  description: "Santam Emerging Business — Operations Platform",
   manifest: "/manifest.json",
 };
 
