@@ -86,11 +86,11 @@ function getPillarNav(pillar: PillarKey, role: UserRole): NavItem[] {
       ];
     case 'settings':
       return [
-        { label: 'General',        href: '/settings/general',    Icon: Settings,  show: true },
-        { label: 'SLA Matrix',     href: '/settings/sla-matrix', Icon: Clock,     show: p.canConfigureSla },
+        { label: 'Import Reports', href: '/imports',             Icon: Upload,     show: p.canUploadReports },
+        { label: 'General',        href: '/settings/general',    Icon: Settings,   show: true },
+        { label: 'SLA Matrix',     href: '/settings/sla-matrix', Icon: Clock,      show: p.canConfigureSla },
         { label: 'Targets',        href: '/settings/targets',    Icon: TrendingUp, show: p.canConfigureSla },
-        { label: 'Import Reports', href: '/imports',             Icon: Upload,    show: p.canUploadReports },
-        { label: 'Users',          href: '/admin/users',         Icon: UserCog,   show: p.canManageUsers },
+        { label: 'Users',          href: '/admin/users',         Icon: UserCog,    show: p.canManageUsers },
       ];
     default:
       return [];

@@ -3,6 +3,13 @@ import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import Link from 'next/link';
 import { hasPermission } from '@/types/roles';
 
+function getTimeOfDay(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'morning';
+  if (h < 17) return 'afternoon';
+  return 'evening';
+}
+
 // Phase 1 placeholder — full tile UI built in Phase 2
 export default async function HubPage() {
   const ctx = await getSessionContext();
@@ -53,7 +60,19 @@ export default async function HubPage() {
       href: '/strategic',
       show: hasPermission(role, 'canSeeStrategic'),
     },
+    {
+      key: 'settings',
+      label: 'Settings & Imports',
+      description: 'Import reports, SLA matrix, targets, user management',
+      href: '/settings',
+      show: hasPermission(role, 'canConfigureSla') || hasPermission(role, 'canUploadReports') || hasPermission(role, 'canManageUsers'),
+    },
   ].filter(p => p.show);
+
+  const firstName = ctx.fullName?.split(' ')[0] ?? 'there';
+  const dateStr = new Date().toLocaleDateString('en-ZA', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
 
   return (
     <div className="min-h-screen bg-[#F4F6FA]">
@@ -67,8 +86,10 @@ export default async function HubPage() {
 
       {/* Tiles */}
       <div className="max-w-5xl mx-auto px-8 py-12">
-        <h1 className="text-2xl font-bold text-[#0D2761] mb-2">Welcome back</h1>
-        <p className="text-sm text-[#6B7280] mb-8">Select a pillar to get started.</p>
+        <h1 className="text-2xl font-bold text-[#0D2761] mb-2">
+          Good {getTimeOfDay()}, {firstName}
+        </h1>
+        <p className="text-sm text-[#6B7280] mb-8">{dateStr}</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {pillars.map(p => (

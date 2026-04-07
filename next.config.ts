@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
       { source: '/workbenches/tp',      destination: '/claims/workbenches/tp',     permanent: false },
       { source: '/workbenches/salvage', destination: '/claims/workbenches/salvage',permanent: false },
       { source: '/financial',           destination: '/finance',                   permanent: false },
+      { source: '/settings',            destination: '/settings/general',          permanent: false },
       // /claims was the old register — now it's the pillar landing, register is at /claims/register
       // Old bookmarks to /claims will land on the pillar landing which is correct
     ];
