@@ -63,6 +63,8 @@ export const DEFAULT_VIEW: Record<UserRole, TopView> = {
   CLAIMS_TECHNICIAN: 'my-work',
   TP_HANDLER: 'my-work',
   SALVAGE_HANDLER: 'my-work',
+  MAILBOX_ADMIN: 'claims',
+  UW_ANALYST: 'executive',
 };
 
 export const SUB_VIEWS: Record<TopView, SubViewDef[]> = {
