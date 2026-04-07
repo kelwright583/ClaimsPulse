@@ -525,3 +525,110 @@ model UwSnapshot {
   @@index([broker])
   @@map("uw_snapshots")
 }
+
+
+// ── Operations: Projects ───────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  BLOCKED
+  COMPLETE
+  @@map("project_status")
+}
+
+enum ProjectPriority {
+  HIGH
+  MEDIUM
+  LOW
+  @@map("project_priority")
+}
+
+model Project {
+  id          String          @id @default(uuid()) @db.Uuid
+  title       String
+  description String?         @db.Text
+  status      ProjectStatus   @default(PLANNING)
+  priority    ProjectPriority @default(MEDIUM)
+  ownerId     String          @map("owner_id") @db.Uuid
+  pillarLink  String?         @map("pillar_link")
+  metricLink  String?         @map("metric_link")
+  startDate   DateTime?       @map("start_date") @db.Date
+  dueDate     DateTime?       @map("due_date") @db.Date
+  completedAt DateTime?       @map("completed_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  milestones   ProjectMilestone[]
+  deliverables ProjectDeliverable[]
+  updates      ProjectUpdate[]
+  documents    ProjectDocument[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([dueDate])
+  @@map("projects")
+}
+
+model ProjectMilestone {
+  id          String    @id @default(uuid()) @db.Uuid
+  projectId   String    @map("project_id") @db.Uuid
+  title       String
+  dueDate     DateTime  @map("due_date") @db.Date
+  isComplete  Boolean   @default(false) @map("is_complete")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([dueDate])
+  @@map("project_milestones")
+}
+
+model ProjectDeliverable {
+  id           String    @id @default(uuid()) @db.Uuid
+  projectId    String    @map("project_id") @db.Uuid
+  title        String
+  isComplete   Boolean   @default(false) @map("is_complete")
+  completedAt  DateTime? @map("completed_at")
+  completedBy  String?   @map("completed_by") @db.Uuid
+  displayOrder Int       @default(0) @map("display_order")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_deliverables")
+}
+
+model ProjectUpdate {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_updates")
+}
+
+model ProjectDocument {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  title       String
+  description String?
+  fileUrl     String   @map("file_url")
+  fileType    String   @map("file_type")
+  fileSizeKb  Int?     @map("file_size_kb")
+  tags        String[] @default([])
+  uploadedBy  String   @map("uploaded_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_documents")
+}
