@@ -14,14 +14,7 @@ import {
   Line,
   CartesianGrid,
 } from 'recharts';
-
-type UserRole =
-  | 'SENIOR_MANAGEMENT'
-  | 'HEAD_OF_CLAIMS'
-  | 'TEAM_LEADER'
-  | 'CLAIMS_TECHNICIAN'
-  | 'TP_HANDLER'
-  | 'SALVAGE_HANDLER';
+import type { UserRole } from '@/types/roles';
 
 interface FilterState {
   dateRange: string;
