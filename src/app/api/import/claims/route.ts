@@ -53,34 +53,35 @@ export async function POST(request: Request) {
     },
   });
 
-  // Fetch previous snapshots (latest per claimId before snapshotDate)
-  const previousSnapshots = await prisma.claimSnapshot.findMany({
-    where: { snapshotDate: { lt: snapshotDate } },
-    orderBy: { snapshotDate: 'desc' },
-    distinct: ['claimId'],
-    select: {
-      claimId: true,
-      claimStatus: true,
-      secondaryStatus: true,
-      totalIncurred: true,
-      totalOs: true,
-    },
-  });
+  // Run all pre-insert DB reads in parallel — they are fully independent of each other
+  const claimIds = rows.map(r => r.claimId);
+
+  const [previousSnapshots, slaConfigs, priorSnapshotsForDays, existingSnapshots] = await Promise.all([
+    // Latest snapshot per claimId from any prior date (for delta flags)
+    prisma.claimSnapshot.findMany({
+      where: { snapshotDate: { lt: snapshotDate } },
+      orderBy: { snapshotDate: 'desc' },
+      distinct: ['claimId'],
+      select: { claimId: true, claimStatus: true, secondaryStatus: true, totalIncurred: true, totalOs: true },
+    }),
+    // SLA config (small table)
+    prisma.slaConfig.findMany({ where: { isActive: true } }),
+    // All prior snapshots for these claims (for daysInCurrentStatus)
+    prisma.claimSnapshot.findMany({
+      where: { claimId: { in: claimIds }, snapshotDate: { lte: snapshotDate } },
+      select: { claimId: true, secondaryStatus: true, snapshotDate: true },
+      orderBy: { snapshotDate: 'asc' },
+    }),
+    // Existing snapshots for today (for create vs update counting)
+    prisma.claimSnapshot.findMany({
+      where: { snapshotDate },
+      select: { claimId: true },
+    }),
+  ]);
+
   const prevMap = new Map(previousSnapshots.map(s => [s.claimId, s]));
 
-  // Load SLA configs
-  const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
-
-  // Compute daysInCurrentStatus — fetch all prior snapshots for these claims in one query,
-  // then find the earliest date per (claimId, secondaryStatus) in memory.
-  const claimIds = rows.map(r => r.claimId);
-  const priorSnapshotsForDays = await prisma.claimSnapshot.findMany({
-    where: { claimId: { in: claimIds }, snapshotDate: { lte: snapshotDate } },
-    select: { claimId: true, secondaryStatus: true, snapshotDate: true },
-    orderBy: { snapshotDate: 'asc' },
-  });
-
-  // earliest[claimId:secondaryStatus] = earliest snapshotDate
+  // Earliest snapshot date per (claimId, secondaryStatus) — used for daysInCurrentStatus
   const earliestMap = new Map<string, Date>();
   for (const s of priorSnapshotsForDays) {
     const key = `${s.claimId}::${s.secondaryStatus ?? ''}`;
@@ -96,11 +97,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // Pre-fetch existing snapshots for this date in one query (for create/update counting)
-  const existingSnapshots = await prisma.claimSnapshot.findMany({
-    where: { snapshotDate },
-    select: { claimId: true },
-  });
   const existingClaimIds = new Set(existingSnapshots.map(s => s.claimId));
 
   // Pre-compute all row data objects (CPU only — no DB calls)

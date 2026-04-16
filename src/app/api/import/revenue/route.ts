@@ -31,7 +31,21 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Failed to parse file', detail: String(err) }, { status: 422 });
   }
 
-  const { rows, periodDate, month } = parseResult;
+  const { rows, periodDate } = parseResult;
+
+  if (rows.length === 0) {
+    return Response.json(
+      { error: 'No data rows found in file. Check the file format matches the expected revenue report template.' },
+      { status: 422 },
+    );
+  }
+
+  if (!(periodDate instanceof Date) || isNaN(periodDate.getTime())) {
+    return Response.json(
+      { error: 'Could not determine report period from file. Ensure the Month column contains valid dates.' },
+      { status: 422 },
+    );
+  }
 
   const importRun = await prisma.importRun.create({
     data: {
@@ -44,11 +58,12 @@ export async function POST(request: Request) {
     },
   });
 
-  // Chunk at 2,000 rows (2,000 × 19 cols = 38,000 params — well under PostgreSQL's 65,535 limit).
+  // Chunk at 1,000 rows (1,000 × 19 cols = 19,000 params — well under PostgreSQL's 65,535 limit).
   // A single createMany with 71k rows exceeds the limit and always crashes.
-  const CHUNK = 2000;
+  const CHUNK = 1000;
   let created = 0;
   let errored = 0;
+  let firstChunkError: string | null = null;
 
   const buildPremiumData = (row: (typeof rows)[number]) => ({
     importRunId: importRun.id,
@@ -80,7 +95,11 @@ export async function POST(request: Request) {
         skipDuplicates: true,
       });
       created += result.count;
-    } catch {
+    } catch (chunkErr) {
+      const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+      if (!firstChunkError) firstChunkError = msg;
+      console.error(`[revenue-import] chunk ${i}–${i + chunk.length} failed:`, msg);
+      // Row-by-row fallback for this chunk
       for (const row of chunk) {
         try {
           await prisma.premiumRecord.create({ data: buildPremiumData(row) });
@@ -104,6 +123,7 @@ export async function POST(request: Request) {
     rowsUpdated: 0,
     rowsErrored: errored,
     snapshotDate: periodDate.toISOString().split('T')[0],
+    ...(firstChunkError ? { warning: `Some chunks failed: ${firstChunkError}` } : {}),
   });
   } catch (err) {
     console.error('[revenue-import]', err);
