@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { parseAccountingNumber } from '@/lib/utils';
+import { findHeaderRow } from './utils';
 
 export interface MappedClaimsRow {
   claimId: string;
@@ -96,11 +97,14 @@ export function parseClaimsReport(buffer: ArrayBuffer): ClaimsParserResult {
 
   const snapshotDate = extractSnapshotDate();
 
-  // Row 0 = headers, Row 1+ = data. range: 0 forces headers from the first row.
+  const headerRow = findHeaderRow(sheet, [
+    'Claim', 'Claim Handler', 'Claim Status', 'Total Paid', 'Total Incurred',
+  ]);
+
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
     raw: false,
-    range: 0,
+    range: headerRow,
   });
 
   const rows: MappedClaimsRow[] = rawRows

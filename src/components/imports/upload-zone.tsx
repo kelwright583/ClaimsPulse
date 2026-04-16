@@ -150,14 +150,17 @@ export function UploadZone() {
 
       try {
         const XLSX = await import('xlsx');
+        const { findHeaderRow } = await import('@/lib/parsers/utils');
         const buffer = await f.arrayBuffer();
         const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
         const sheet = wb.Sheets[wb.SheetNames[0]];
 
+        const headerRow = findHeaderRow(sheet, activeConfig.requiredColumns);
+
         const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
           defval: null,
           raw: false,
-          range: 0,
+          range: headerRow,
         });
 
         setPreviewRowCount(rows.length);

@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { parseAccountingNumber } from '@/lib/utils';
 import { differenceInDays } from 'date-fns';
+import { findHeaderRow } from './utils';
 
 export interface MappedPayeeRow {
   claimId: string;
@@ -68,9 +69,14 @@ export function parsePayeeReport(buffer: ArrayBuffer): PayeeParserResult {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
+  const headerRow = findHeaderRow(sheet, [
+    'Claim Number', 'Claims Handler', 'Payee', 'Cheque Requested', 'Estimate Type',
+  ]);
+
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
     raw: false,
+    range: headerRow,
   });
 
   const rows: MappedPayeeRow[] = rawRows

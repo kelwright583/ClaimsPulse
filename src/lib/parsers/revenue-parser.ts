@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { parseAccountingNumber } from '@/lib/utils';
+import { findHeaderRow } from './utils';
 
 export interface MappedRevenueRow {
   month: string;
@@ -73,10 +74,14 @@ export function parseRevenueReport(buffer: ArrayBuffer): RevenueParserResult {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-  // Row 0 = headers, Row 1+ = data. No title rows in the xlsx format.
+  const headerRow = findHeaderRow(sheet, [
+    'Month', 'Class Name', 'Broker', 'Net WP', 'GWP', 'Endorsement Type',
+  ]);
+
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
     raw: false,
+    range: headerRow,
   });
 
   // Extract period from the Month column of the first data row.
