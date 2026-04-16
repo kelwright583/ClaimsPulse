@@ -108,11 +108,22 @@ export async function POST(request: Request) {
       secondaryStatus: prev.secondaryStatus,
       totalIncurred: prev.totalIncurred ? Number(prev.totalIncurred) : null,
     } : null);
-    const daysInCurrentStatus = daysMap.get(row.claimId) ?? 0;
+    // daysInCurrentStatus: use import history if available, else fall back to DOL
+    const daysInCurrentStatus = daysMap.get(row.claimId)
+      ?? (row.dateOfLoss
+        ? Math.floor((snapshotDate.getTime() - new Date(row.dateOfLoss).getTime()) / 86400000)
+        : 0);
     const isSlaBreach = computeSlaBreaches({ ...row, daysInCurrentStatus }, slaConfigs, snapshotDate);
     const complexityWeight = COMPLEXITY_WEIGHTS[row.cause ?? ''] ?? DEFAULT_WEIGHT;
 
-    const notificationGapDays = row.dateOfLoss
+    // notificationGapDays: dateOfNotification - dateOfLoss
+    // dateOfNotification is NOT in the daily claims report — it's populated by the payee import.
+    // This will always be null here; the payee route back-fills it on ClaimSnapshot rows.
+    const notificationGapDays: null = null;
+
+    // daysOpen: claim age since DOL (best available in the claims report; payee import provides
+    // dateOfRegistration which would be more accurate, but that isn't in this file's data)
+    const daysOpen = row.dateOfLoss
       ? Math.floor((snapshotDate.getTime() - new Date(row.dateOfLoss).getTime()) / 86400000)
       : null;
 
@@ -185,6 +196,7 @@ export async function POST(request: Request) {
         deltaFlags,
         isSlaBreach,
         daysInCurrentStatus,
+        daysOpen,
       },
     };
   });
@@ -264,7 +276,8 @@ export async function POST(request: Request) {
         ${d.complexityWeight}::int,
         ${JSON.stringify(d.deltaFlags)}::jsonb,
         ${d.isSlaBreach},
-        ${d.daysInCurrentStatus}::int
+        ${d.daysInCurrentStatus}::int,
+        ${d.daysOpen}::int
       )`);
 
       await prisma.$executeRaw`
@@ -286,7 +299,7 @@ export async function POST(request: Request) {
           total_os, total_incurred, section_sum_insured,
           notification_gap_days, reserve_utilisation_pct,
           complexity_weight, delta_flags, is_sla_breach,
-          days_in_current_status
+          days_in_current_status, days_open
         ) VALUES ${Prisma.join(values)}
         ON CONFLICT (claim_id, snapshot_date) DO UPDATE SET
           import_run_id = EXCLUDED.import_run_id,
@@ -341,7 +354,8 @@ export async function POST(request: Request) {
           complexity_weight = EXCLUDED.complexity_weight,
           delta_flags = EXCLUDED.delta_flags,
           is_sla_breach = EXCLUDED.is_sla_breach,
-          days_in_current_status = EXCLUDED.days_in_current_status
+          days_in_current_status = EXCLUDED.days_in_current_status,
+          days_open = EXCLUDED.days_open
       `;
 
       for (const { claimId } of chunk) {
@@ -371,7 +385,7 @@ export async function POST(request: Request) {
               total_os, total_incurred, section_sum_insured,
               notification_gap_days, reserve_utilisation_pct,
               complexity_weight, delta_flags, is_sla_breach,
-              days_in_current_status
+              days_in_current_status, days_open
             ) VALUES (
               gen_random_uuid(),
               ${d.importRunId}::uuid, ${d.snapshotDate}::date,
@@ -393,7 +407,7 @@ export async function POST(request: Request) {
               ${d.totalOs}::decimal, ${d.totalIncurred}::decimal, ${d.sectionSumInsured}::decimal,
               ${d.notificationGapDays}::int, ${d.reserveUtilisationPct}::decimal,
               ${d.complexityWeight}::int, ${JSON.stringify(d.deltaFlags)}::jsonb,
-              ${d.isSlaBreach}, ${d.daysInCurrentStatus}::int
+              ${d.isSlaBreach}, ${d.daysInCurrentStatus}::int, ${d.daysOpen}::int
             )
             ON CONFLICT (claim_id, snapshot_date) DO UPDATE SET
               import_run_id = EXCLUDED.import_run_id,
@@ -405,7 +419,8 @@ export async function POST(request: Request) {
               total_incurred = EXCLUDED.total_incurred,
               delta_flags = EXCLUDED.delta_flags,
               is_sla_breach = EXCLUDED.is_sla_breach,
-              days_in_current_status = EXCLUDED.days_in_current_status
+              days_in_current_status = EXCLUDED.days_in_current_status,
+              days_open = EXCLUDED.days_open
           `;
           if (existingClaimIds.has(claimId)) { updated++; } else { created++; }
         } catch (rowErr) {

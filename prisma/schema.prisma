@@ -153,6 +153,7 @@ model ClaimSnapshot {
   deltaFlags            Json?    @map("delta_flags")
   isSlaBreach           Boolean  @default(false) @map("is_sla_breach")
   daysInCurrentStatus   Int?     @map("days_in_current_status")
+  daysOpen              Int?     @map("days_open")
 
   @@unique([claimId, snapshotDate])
   @@index([claimId])

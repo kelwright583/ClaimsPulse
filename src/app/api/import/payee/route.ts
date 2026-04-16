@@ -185,6 +185,40 @@ export async function POST(request: Request) {
       }
     }
 
+    // Cross-populate notification and registration dates onto ClaimSnapshots.
+    // These dates are not in the daily claims report, but the payee report has them.
+    // Group by claimId — keep the earliest date per claim across all payment rows.
+    const dateLookup = new Map<string, { don: Date | null; dor: Date | null }>();
+    for (const row of rows) {
+      const existing = dateLookup.get(row.claimId);
+      const don = row.dateOfNotification ?? null;
+      const dor = row.dateOfRegistration ?? null;
+      if (!existing) {
+        dateLookup.set(row.claimId, { don, dor });
+      } else {
+        if (don && (!existing.don || don < existing.don)) existing.don = don;
+        if (dor && (!existing.dor || dor < existing.dor)) existing.dor = dor;
+      }
+    }
+
+    for (const [claimId, dates] of dateLookup) {
+      if (dates.don || dates.dor) {
+        await prisma.claimSnapshot.updateMany({
+          where: {
+            claimId,
+            OR: [
+              { dateOfNotification: null },
+              { dateOfRegistration: null },
+            ],
+          },
+          data: {
+            ...(dates.don ? { dateOfNotification: dates.don } : {}),
+            ...(dates.dor ? { dateOfRegistration: dates.dor } : {}),
+          },
+        });
+      }
+    }
+
     const errored = rows.length - created - updated;
 
     await prisma.importRun.update({

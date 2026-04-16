@@ -29,7 +29,7 @@ async function computeScore(handler: string | null, snapshotDate: Date): Promise
   const [openClaims, breachCount] = await Promise.all([
     prisma.claimSnapshot.findMany({
       where: { snapshotDate, ...handlerWhere, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } },
-      select: { daysInCurrentStatus: true, totalPaid: true, isSlaBreach: true },
+      select: { daysInCurrentStatus: true, daysOpen: true, totalPaid: true, isSlaBreach: true },
     }),
     prisma.claimSnapshot.count({
       where: { snapshotDate, ...handlerWhere, isSlaBreach: true },
@@ -44,7 +44,7 @@ async function computeScore(handler: string | null, snapshotDate: Date): Promise
   // Speed: 25 - min(25, (avgDaysToFirstPayment / 30) * 25)
   const paidClaims = openClaims.filter(c => c.totalPaid && Number(c.totalPaid) > 0);
   const avgDaysToFirstPayment = paidClaims.length > 0
-    ? paidClaims.reduce((sum, c) => sum + (c.daysInCurrentStatus ?? 0), 0) / paidClaims.length
+    ? paidClaims.reduce((sum, c) => sum + (c.daysOpen ?? c.daysInCurrentStatus ?? 0), 0) / paidClaims.length
     : 30;
   const speed = clamp(25 - Math.min(25, (avgDaysToFirstPayment / 30) * 25), 0, 25);
 
@@ -66,10 +66,10 @@ async function computeScore(handler: string | null, snapshotDate: Date): Promise
   // Finalisation: 25 - min(25, (avgDaysOpen / 90) * 25)
   const finalisedClaims = await prisma.claimSnapshot.findMany({
     where: { snapshotDate, ...handlerWhere, claimStatus: 'Finalised' },
-    select: { daysInCurrentStatus: true },
+    select: { daysInCurrentStatus: true, daysOpen: true },
   });
   const avgDaysOpen = finalisedClaims.length > 0
-    ? finalisedClaims.reduce((sum, c) => sum + (c.daysInCurrentStatus ?? 0), 0) / finalisedClaims.length
+    ? finalisedClaims.reduce((sum, c) => sum + (c.daysOpen ?? c.daysInCurrentStatus ?? 0), 0) / finalisedClaims.length
     : 90;
   const finalisation = clamp(25 - Math.min(25, (avgDaysOpen / 90) * 25), 0, 25);
 

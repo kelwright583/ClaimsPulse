@@ -21,6 +21,9 @@ export interface MappedPayeeRow {
   policyNumber?: string | null;
   insured?: string | null;
   claimStatus?: string | null;
+  dateOfLoss?: Date | null;
+  dateOfNotification?: Date | null;
+  dateOfRegistration?: Date | null;
   // Computed integrity fields
   sameDayAuthPrint: boolean;
   selfAuthorised: boolean;
@@ -112,6 +115,9 @@ export function parsePayeeReport(buffer: ArrayBuffer): PayeeParserResult {
       return {
         claimId,
         handler,
+        dateOfLoss: parseDate(getCell(r, 'Date Of Loss')),
+        dateOfNotification: parseDate(getCell(r, 'Date Of Notification')),
+        dateOfRegistration: parseDate(getCell(r, 'Date Of Registration')),
         chequeNo: getCell(r, 'Cheque No') ? String(getCell(r, 'Cheque No')).trim() : null,
         payee: getCell(r, 'Payee', 'Payee Name') ? String(getCell(r, 'Payee', 'Payee Name')).trim() : null,
         payeeVatNr: getCell(r, 'Payee VAT Nr', 'Payee VAT Number') ? String(getCell(r, 'Payee VAT Nr', 'Payee VAT Number')).trim() : null,
