@@ -209,11 +209,9 @@ export function UploadZone() {
     setImporting(true);
     setProgress(10);
 
-    let body: FormData | string;
-    let extraHeaders: Record<string, string> = {};
-
-    if (file.size > 5 * 1024 * 1024) {
-      // File exceeds Netlify's 6MB function payload limit — parse client-side and send JSON rows
+    // Revenue files can be 12MB+ — parse client-side and send in 3,000-row chunks
+    // to stay under Netlify's 6MB per-request payload limit
+    if (activeConfig.key === 'revenue') {
       try {
         const XLSX = await import('xlsx');
         const { findHeaderRow } = await import('@/lib/parsers/utils');
@@ -221,31 +219,96 @@ export function UploadZone() {
         const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const headerRow = findHeaderRow(sheet, activeConfig.requiredColumns);
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: false, range: headerRow });
-        body = JSON.stringify({ rows, filename: file.name });
-        extraHeaders = { 'Content-Type': 'application/json' };
-      } catch {
-        // Client-side parse failed — fall back to direct upload and hope it fits
-        const fd = new FormData();
-        fd.append('file', file);
-        body = fd;
+        const allRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+          defval: null,
+          raw: false,
+          range: headerRow,
+        });
+
+        const CHUNK_SIZE = 3000;
+        const totalChunks = Math.max(1, Math.ceil(allRows.length / CHUNK_SIZE));
+        let importRunId: string | null = null;
+        let totalCreated = 0;
+        let totalErrored = 0;
+
+        for (let c = 0; c < totalChunks; c++) {
+          const chunkRows = allRows.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
+          setProgress(Math.round(10 + (c / totalChunks) * 80));
+
+          const payload: Record<string, unknown> = {
+            rows: chunkRows,
+            chunk: c,
+            totalChunks,
+            filename: file.name,
+          };
+          if (importRunId) payload.importRunId = importRunId;
+
+          const res = await fetch(activeConfig.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+            setProgress(100);
+            setResult({
+              success: false,
+              rowsRead: allRows.length,
+              rowsCreated: totalCreated,
+              rowsUpdated: 0,
+              rowsErrored: totalErrored + chunkRows.length,
+              error: (errData.detail as string) ?? (errData.error as string) ?? `Chunk ${c + 1}/${totalChunks} failed`,
+            });
+            setImporting(false);
+            setStep('results');
+            return;
+          }
+
+          const data = await res.json();
+          if (c === 0) importRunId = data.importRunId as string;
+          totalCreated += (data.chunkCreated as number) ?? 0;
+          totalErrored += (data.chunkErrored as number) ?? 0;
+        }
+
+        setProgress(100);
+        setResult({
+          success: true,
+          rowsRead: allRows.length,
+          rowsCreated: totalCreated,
+          rowsUpdated: 0,
+          rowsErrored: totalErrored,
+        });
+        refreshHistory();
+        setImporting(false);
+        setStep('results');
+        return;
+      } catch (err) {
+        setProgress(100);
+        setResult({
+          success: false,
+          rowsRead: 0,
+          rowsCreated: 0,
+          rowsUpdated: 0,
+          rowsErrored: 0,
+          error: `Client-side parsing failed: ${String(err)}`,
+        });
+        setImporting(false);
+        setStep('results');
+        return;
       }
-    } else {
-      const fd = new FormData();
-      fd.append('file', file);
-      body = fd;
     }
+
+    // Standard FormData upload for all other import types
+    const fd = new FormData();
+    fd.append('file', file);
 
     const progressInterval = setInterval(() => {
       setProgress(prev => Math.min(prev + 7, 88));
     }, 600);
 
     try {
-      const res = await fetch(activeConfig.endpoint, {
-        method: 'POST',
-        body,
-        ...(typeof body === 'string' ? { headers: extraHeaders } : {}),
-      });
+      const res = await fetch(activeConfig.endpoint, { method: 'POST', body: fd });
       clearInterval(progressInterval);
       setProgress(100);
 
