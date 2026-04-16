@@ -1,6 +1,7 @@
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+import { Prisma } from '@prisma/client';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import { prisma } from '@/lib/prisma';
 import { parseRevenueReport } from '@/lib/parsers/revenue-parser';
@@ -62,56 +63,57 @@ export async function POST(request: Request) {
   // PremiumRecord has no unique constraint so re-imports would create duplicates without this.
   await prisma.premiumRecord.deleteMany({ where: { periodDate } });
 
-  // Chunk at 2,000 rows (2,000 × 19 cols = 38,000 params — well under PostgreSQL's 65,535 limit).
-  // A single createMany with 71k rows exceeds the limit and always crashes.
-  const CHUNK = 2000;
+  // $executeRaw INSERT per chunk — single SQL statement per chunk, no adapter-pg decomposition.
+  // deleteMany above already cleared existing records so no ON CONFLICT needed.
+  const SQL_CHUNK = 500;
   let created = 0;
   let errored = 0;
   let firstChunkError: string | null = null;
 
-  const buildPremiumData = (row: (typeof rows)[number]) => ({
-    importRunId: importRun.id,
-    month: row.month,
-    periodDate: row.periodDate,
-    branch: row.branch,
-    classCode: row.classCode,
-    className: row.className,
-    product: row.product,
-    broker: row.broker,
-    policyNumber: row.policyNumber,
-    insured: row.insured,
-    uwYear: row.uwYear,
-    endorsementType: row.endorsementType,
-    gwp: row.gwp,
-    netWp: row.netWp,
-    quotaShareWp: row.quotaShareWp,
-    gwpVat: row.gwpVat,
-    grossComm: row.grossComm,
-    netComm: row.netComm,
-    grossCommPct: row.grossCommPct,
-  });
+  for (let i = 0; i < rows.length; i += SQL_CHUNK) {
+    const chunk = rows.slice(i, i + SQL_CHUNK);
+    if (!chunk.length) continue;
 
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
     try {
-      const result = await prisma.premiumRecord.createMany({
-        data: chunk.map(buildPremiumData),
-        skipDuplicates: true,
-      });
-      created += result.count;
+      const values = chunk.map(r => Prisma.sql`(
+        gen_random_uuid(),
+        ${importRun.id}::uuid,
+        ${r.month},
+        ${r.periodDate}::date,
+        ${r.branch},
+        ${r.classCode},
+        ${r.className},
+        ${r.product},
+        ${r.broker},
+        ${r.policyNumber},
+        ${r.insured},
+        ${r.uwYear}::int,
+        ${r.endorsementType},
+        ${r.gwp}::decimal,
+        ${r.netWp}::decimal,
+        ${r.quotaShareWp}::decimal,
+        ${r.gwpVat}::decimal,
+        ${r.grossComm}::decimal,
+        ${r.netComm}::decimal,
+        ${r.grossCommPct}::decimal
+      )`);
+
+      await prisma.$executeRaw`
+        INSERT INTO premium_records (
+          id, import_run_id, month, period_date,
+          branch, class_code, class_name, product,
+          broker, policy_number, insured, uw_year,
+          endorsement_type, gwp, net_wp, quota_share_wp,
+          gwp_vat, gross_comm, net_comm, gross_comm_pct
+        ) VALUES ${Prisma.join(values)}
+      `;
+
+      created += chunk.length;
     } catch (chunkErr) {
       const msg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
       if (!firstChunkError) firstChunkError = msg;
       console.error(`[revenue-import] chunk ${i}–${i + chunk.length} failed:`, msg);
-      // Row-by-row fallback for this chunk
-      for (const row of chunk) {
-        try {
-          await prisma.premiumRecord.create({ data: buildPremiumData(row) });
-          created++;
-        } catch {
-          errored++;
-        }
-      }
+      errored += chunk.length;
     }
   }
 

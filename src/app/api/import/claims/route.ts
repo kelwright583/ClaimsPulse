@@ -1,6 +1,7 @@
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+import { Prisma } from '@prisma/client';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import { prisma } from '@/lib/prisma';
 import { parseClaimsReport } from '@/lib/parsers/claims-parser';
@@ -187,62 +188,215 @@ export async function POST(request: Request) {
   let errored = 0;
   const errors: Array<{ claimId: string; error: string }> = [];
 
-  // Split rows into new vs existing for this snapshot date
-  const toCreate = rowDataList.filter(({ claimId }) => !existingClaimIds.has(claimId));
-  const toUpdate = rowDataList.filter(({ claimId }) => existingClaimIds.has(claimId));
+  const SQL_CHUNK = 200;
 
-  // --- Bulk-create new snapshots in chunks of 500 ---
-  if (toCreate.length > 0) {
-    const CREATE_CHUNK = 500;
-    for (let i = 0; i < toCreate.length; i += CREATE_CHUNK) {
-      const chunk = toCreate.slice(i, i + CREATE_CHUNK);
-      try {
-        const result = await prisma.claimSnapshot.createMany({
-          data: chunk.map(({ data }) => data),
-          skipDuplicates: true,
-        });
-        created += result.count;
-      } catch {
-        for (const { claimId, data } of chunk) {
-          try {
-            await prisma.claimSnapshot.create({ data });
-            created++;
-          } catch (rowErr) {
-            errored++;
-            errors.push({ claimId, error: String(rowErr) });
-          }
-        }
+  for (let i = 0; i < rowDataList.length; i += SQL_CHUNK) {
+    const chunk = rowDataList.slice(i, i + SQL_CHUNK);
+    if (!chunk.length) continue;
+
+    try {
+      const values = chunk.map(({ data: d }) => Prisma.sql`(
+        gen_random_uuid(),
+        ${d.importRunId}::uuid,
+        ${d.snapshotDate}::date,
+        ${d.claimId},
+        ${d.oldClaimId},
+        ${d.handler},
+        ${d.claimStatus},
+        ${d.secondaryStatus},
+        ${d.orgUnit},
+        ${d.uwYear}::int,
+        ${d.groupDesc},
+        ${d.sectionDesc},
+        ${d.policyNumber},
+        ${d.insured},
+        ${d.broker},
+        ${d.dateOfLoss}::date,
+        ${d.cause},
+        ${d.lossArea},
+        ${d.lossAddr},
+        ${d.intimatedAmount}::decimal,
+        ${d.retainedPct}::decimal,
+        ${d.deductible}::decimal,
+        ${d.ownDamagePaid}::decimal,
+        ${d.thirdPartyPaid}::decimal,
+        ${d.expensesPaid}::decimal,
+        ${d.legalCostsPaid}::decimal,
+        ${d.assessorFeesPaid}::decimal,
+        ${d.repairAuthPaid}::decimal,
+        ${d.cashLieuPaid}::decimal,
+        ${d.glassAuthPaid}::decimal,
+        ${d.partsAuthPaid}::decimal,
+        ${d.towingPaid}::decimal,
+        ${d.additionalsPaid}::decimal,
+        ${d.tpLiabilityPaid}::decimal,
+        ${d.investigationPaid}::decimal,
+        ${d.totalPaid}::decimal,
+        ${d.totalRecovery}::decimal,
+        ${d.totalSalvage}::decimal,
+        ${d.ownDamageOs}::decimal,
+        ${d.thirdPartyOs}::decimal,
+        ${d.expensesOs}::decimal,
+        ${d.legalCostsOs}::decimal,
+        ${d.assessorFeesOs}::decimal,
+        ${d.repairAuthOs}::decimal,
+        ${d.cashLieuOs}::decimal,
+        ${d.glassAuthOs}::decimal,
+        ${d.tpLiabilityOs}::decimal,
+        ${d.totalOs}::decimal,
+        ${d.totalIncurred}::decimal,
+        ${d.sectionSumInsured}::decimal,
+        ${d.notificationGapDays}::int,
+        ${d.reserveUtilisationPct}::decimal,
+        ${d.complexityWeight}::int,
+        ${JSON.stringify(d.deltaFlags)}::jsonb,
+        ${d.isSlaBreach},
+        ${d.daysInCurrentStatus}::int
+      )`);
+
+      await prisma.$executeRaw`
+        INSERT INTO claim_snapshots (
+          id, import_run_id, snapshot_date, claim_id, old_claim_id,
+          handler, claim_status, secondary_status,
+          org_unit, uw_year, group_desc, section_desc,
+          policy_number, insured, broker,
+          date_of_loss, cause, loss_area, loss_addr,
+          intimated_amount, retained_pct, deductible,
+          own_damage_paid, third_party_paid, expenses_paid,
+          legal_costs_paid, assessor_fees_paid, repair_auth_paid,
+          cash_lieu_paid, glass_auth_paid, parts_auth_paid,
+          towing_paid, additionals_paid, tp_liability_paid,
+          investigation_paid, total_paid, total_recovery, total_salvage,
+          own_damage_os, third_party_os, expenses_os,
+          legal_costs_os, assessor_fees_os, repair_auth_os,
+          cash_lieu_os, glass_auth_os, tp_liability_os,
+          total_os, total_incurred, section_sum_insured,
+          notification_gap_days, reserve_utilisation_pct,
+          complexity_weight, delta_flags, is_sla_breach,
+          days_in_current_status
+        ) VALUES ${Prisma.join(values)}
+        ON CONFLICT (claim_id, snapshot_date) DO UPDATE SET
+          import_run_id = EXCLUDED.import_run_id,
+          old_claim_id = EXCLUDED.old_claim_id,
+          handler = EXCLUDED.handler,
+          claim_status = EXCLUDED.claim_status,
+          secondary_status = EXCLUDED.secondary_status,
+          org_unit = EXCLUDED.org_unit,
+          uw_year = EXCLUDED.uw_year,
+          group_desc = EXCLUDED.group_desc,
+          section_desc = EXCLUDED.section_desc,
+          policy_number = EXCLUDED.policy_number,
+          insured = EXCLUDED.insured,
+          broker = EXCLUDED.broker,
+          date_of_loss = EXCLUDED.date_of_loss,
+          cause = EXCLUDED.cause,
+          loss_area = EXCLUDED.loss_area,
+          loss_addr = EXCLUDED.loss_addr,
+          intimated_amount = EXCLUDED.intimated_amount,
+          retained_pct = EXCLUDED.retained_pct,
+          deductible = EXCLUDED.deductible,
+          own_damage_paid = EXCLUDED.own_damage_paid,
+          third_party_paid = EXCLUDED.third_party_paid,
+          expenses_paid = EXCLUDED.expenses_paid,
+          legal_costs_paid = EXCLUDED.legal_costs_paid,
+          assessor_fees_paid = EXCLUDED.assessor_fees_paid,
+          repair_auth_paid = EXCLUDED.repair_auth_paid,
+          cash_lieu_paid = EXCLUDED.cash_lieu_paid,
+          glass_auth_paid = EXCLUDED.glass_auth_paid,
+          parts_auth_paid = EXCLUDED.parts_auth_paid,
+          towing_paid = EXCLUDED.towing_paid,
+          additionals_paid = EXCLUDED.additionals_paid,
+          tp_liability_paid = EXCLUDED.tp_liability_paid,
+          investigation_paid = EXCLUDED.investigation_paid,
+          total_paid = EXCLUDED.total_paid,
+          total_recovery = EXCLUDED.total_recovery,
+          total_salvage = EXCLUDED.total_salvage,
+          own_damage_os = EXCLUDED.own_damage_os,
+          third_party_os = EXCLUDED.third_party_os,
+          expenses_os = EXCLUDED.expenses_os,
+          legal_costs_os = EXCLUDED.legal_costs_os,
+          assessor_fees_os = EXCLUDED.assessor_fees_os,
+          repair_auth_os = EXCLUDED.repair_auth_os,
+          cash_lieu_os = EXCLUDED.cash_lieu_os,
+          glass_auth_os = EXCLUDED.glass_auth_os,
+          tp_liability_os = EXCLUDED.tp_liability_os,
+          total_os = EXCLUDED.total_os,
+          total_incurred = EXCLUDED.total_incurred,
+          section_sum_insured = EXCLUDED.section_sum_insured,
+          notification_gap_days = EXCLUDED.notification_gap_days,
+          reserve_utilisation_pct = EXCLUDED.reserve_utilisation_pct,
+          complexity_weight = EXCLUDED.complexity_weight,
+          delta_flags = EXCLUDED.delta_flags,
+          is_sla_breach = EXCLUDED.is_sla_breach,
+          days_in_current_status = EXCLUDED.days_in_current_status
+      `;
+
+      for (const { claimId } of chunk) {
+        if (existingClaimIds.has(claimId)) { updated++; } else { created++; }
       }
-    }
-  }
-
-  // --- Batch-update existing snapshots in chunks of 50 (array-form $transaction per chunk) ---
-  if (toUpdate.length > 0) {
-    const UPDATE_CHUNK = 50;
-    for (let i = 0; i < toUpdate.length; i += UPDATE_CHUNK) {
-      const chunk = toUpdate.slice(i, i + UPDATE_CHUNK);
-      try {
-        await prisma.$transaction(
-          chunk.map(({ claimId, data }) =>
-            prisma.claimSnapshot.update({
-              where: { claimId_snapshotDate: { claimId, snapshotDate } },
-              data,
-            })
-          )
-        );
-        updated += chunk.length;
-      } catch {
-        for (const { claimId, data } of chunk) {
-          try {
-            await prisma.claimSnapshot.update({
-              where: { claimId_snapshotDate: { claimId, snapshotDate } },
-              data,
-            });
-            updated++;
-          } catch (rowErr) {
-            errored++;
-            errors.push({ claimId, error: String(rowErr) });
-          }
+    } catch (err) {
+      // Chunk failed — fall back to row-by-row for this chunk only
+      for (const { claimId, data: d } of chunk) {
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO claim_snapshots (
+              id, import_run_id, snapshot_date, claim_id, old_claim_id,
+              handler, claim_status, secondary_status,
+              org_unit, uw_year, group_desc, section_desc,
+              policy_number, insured, broker,
+              date_of_loss, cause, loss_area, loss_addr,
+              intimated_amount, retained_pct, deductible,
+              own_damage_paid, third_party_paid, expenses_paid,
+              legal_costs_paid, assessor_fees_paid, repair_auth_paid,
+              cash_lieu_paid, glass_auth_paid, parts_auth_paid,
+              towing_paid, additionals_paid, tp_liability_paid,
+              investigation_paid, total_paid, total_recovery, total_salvage,
+              own_damage_os, third_party_os, expenses_os,
+              legal_costs_os, assessor_fees_os, repair_auth_os,
+              cash_lieu_os, glass_auth_os, tp_liability_os,
+              total_os, total_incurred, section_sum_insured,
+              notification_gap_days, reserve_utilisation_pct,
+              complexity_weight, delta_flags, is_sla_breach,
+              days_in_current_status
+            ) VALUES (
+              gen_random_uuid(),
+              ${d.importRunId}::uuid, ${d.snapshotDate}::date,
+              ${d.claimId}, ${d.oldClaimId},
+              ${d.handler}, ${d.claimStatus}, ${d.secondaryStatus},
+              ${d.orgUnit}, ${d.uwYear}::int, ${d.groupDesc}, ${d.sectionDesc},
+              ${d.policyNumber}, ${d.insured}, ${d.broker},
+              ${d.dateOfLoss}::date, ${d.cause}, ${d.lossArea}, ${d.lossAddr},
+              ${d.intimatedAmount}::decimal, ${d.retainedPct}::decimal, ${d.deductible}::decimal,
+              ${d.ownDamagePaid}::decimal, ${d.thirdPartyPaid}::decimal, ${d.expensesPaid}::decimal,
+              ${d.legalCostsPaid}::decimal, ${d.assessorFeesPaid}::decimal, ${d.repairAuthPaid}::decimal,
+              ${d.cashLieuPaid}::decimal, ${d.glassAuthPaid}::decimal, ${d.partsAuthPaid}::decimal,
+              ${d.towingPaid}::decimal, ${d.additionalsPaid}::decimal, ${d.tpLiabilityPaid}::decimal,
+              ${d.investigationPaid}::decimal, ${d.totalPaid}::decimal, ${d.totalRecovery}::decimal,
+              ${d.totalSalvage}::decimal,
+              ${d.ownDamageOs}::decimal, ${d.thirdPartyOs}::decimal, ${d.expensesOs}::decimal,
+              ${d.legalCostsOs}::decimal, ${d.assessorFeesOs}::decimal, ${d.repairAuthOs}::decimal,
+              ${d.cashLieuOs}::decimal, ${d.glassAuthOs}::decimal, ${d.tpLiabilityOs}::decimal,
+              ${d.totalOs}::decimal, ${d.totalIncurred}::decimal, ${d.sectionSumInsured}::decimal,
+              ${d.notificationGapDays}::int, ${d.reserveUtilisationPct}::decimal,
+              ${d.complexityWeight}::int, ${JSON.stringify(d.deltaFlags)}::jsonb,
+              ${d.isSlaBreach}, ${d.daysInCurrentStatus}::int
+            )
+            ON CONFLICT (claim_id, snapshot_date) DO UPDATE SET
+              import_run_id = EXCLUDED.import_run_id,
+              handler = EXCLUDED.handler,
+              claim_status = EXCLUDED.claim_status,
+              secondary_status = EXCLUDED.secondary_status,
+              total_paid = EXCLUDED.total_paid,
+              total_os = EXCLUDED.total_os,
+              total_incurred = EXCLUDED.total_incurred,
+              delta_flags = EXCLUDED.delta_flags,
+              is_sla_breach = EXCLUDED.is_sla_breach,
+              days_in_current_status = EXCLUDED.days_in_current_status
+          `;
+          if (existingClaimIds.has(claimId)) { updated++; } else { created++; }
+        } catch (rowErr) {
+          errored++;
+          errors.push({ claimId, error: String(rowErr) });
         }
       }
     }
