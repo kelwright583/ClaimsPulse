@@ -1,14 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
-  createColumnHelper,
-} from '@tanstack/react-table';
-import { AlertTriangle, Clock, Flag, Package, TrendingUp, CreditCard, Check, X } from 'lucide-react';
+import { AlertTriangle, Clock, Flag, Package, TrendingUp, CreditCard } from 'lucide-react';
 import type { UserRole } from '@/types/roles';
 import type { FilterState } from '@/components/dashboard/types';
 
@@ -110,9 +103,6 @@ function AlertCard({
   );
 }
 
-type BackorderRow = MorningBriefData['partsBackorder'][number];
-const colHelper = createColumnHelper<BackorderRow>();
-
 const EMPTY = 'No data yet — import a Claims Outstanding report to populate the dashboard.';
 
 export function MorningBrief({ role: _role, userId: _userId, filters: _filters }: SubViewProps) {
@@ -134,49 +124,6 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
-  const columns = [
-    colHelper.accessor('claimId', {
-      header: 'Claim ID',
-      cell: i => (
-        <Link href={`/claims/${encodeURIComponent(i.getValue())}`} className="font-mono text-[#1E5BC6] text-xs hover:underline">
-          {i.getValue()}
-        </Link>
-      ),
-    }),
-    colHelper.accessor('insured', {
-      header: 'Insured',
-      cell: i => <span className="text-sm text-[#0D2761]">{i.getValue() ?? '—'}</span>,
-    }),
-    colHelper.accessor('handler', {
-      header: 'Handler',
-      cell: i => <span className="text-sm text-[#0D2761]">{i.getValue() ?? '—'}</span>,
-    }),
-    colHelper.accessor('daysInStatus', {
-      header: 'Days in status',
-      cell: i => <span className="text-sm tabular-nums text-[#0D2761]">{i.getValue() ?? '—'}</span>,
-    }),
-    colHelper.accessor('hasAcknowledgedDelay', {
-      header: 'Delay acknowledged',
-      cell: i =>
-        i.getValue() ? (
-          <Check className="w-4 h-4 text-[#065F46]" strokeWidth={2} />
-        ) : (
-          <X className="w-4 h-4 text-[#E24B4A]" strokeWidth={2} />
-        ),
-    }),
-    colHelper.accessor('expectedDate', {
-      header: 'Expected date',
-      cell: i => <span className="text-xs text-[#6B7280]">{i.getValue() ?? '—'}</span>,
-    }),
-  ];
-
-  const tableData = data?.partsBackorder ?? [];
-  const table = useReactTable({
-    data: tableData,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
   if (loading) {
     return (
       <div className="space-y-4">
@@ -190,7 +137,6 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
   const alerts = data?.alertCards;
   const delta = data?.delta;
   const health = data?.handlerHealth ?? [];
-  const backorder = data?.partsBackorder ?? [];
 
   const deltaItems = delta
     ? [
@@ -282,45 +228,6 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
         )}
       </section>
 
-      {/* Section 4 — Parts on backorder table */}
-      <section>
-        <h2 className="text-base font-semibold text-[#0D2761] mb-4">Parts on backorder watchlist</h2>
-        {backorder.length === 0 ? (
-          <p className="text-sm text-[#6B7280]">{EMPTY}</p>
-        ) : (
-          <div className="bg-white border border-[#E8EEF8] rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  {table.getHeaderGroups().map(hg => (
-                    <tr key={hg.id} className="bg-[#F4F6FA] border-b border-[#E8EEF8]">
-                      {hg.headers.map(header => (
-                        <th
-                          key={header.id}
-                          className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide whitespace-nowrap"
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </th>
-                      ))}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody>
-                  {table.getRowModel().rows.map(row => (
-                    <tr key={row.id} className="border-b border-[#E8EEF8] last:border-0 hover:bg-[#F4F6FA] transition-colors">
-                      {row.getVisibleCells().map(cell => (
-                        <td key={cell.id} className="px-4 py-3">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </section>
     </div>
   );
 }
