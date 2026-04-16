@@ -242,6 +242,7 @@ export function UploadZone() {
             filename: file.name,
           };
           if (importRunId) payload.importRunId = importRunId;
+          if (c === 0) payload.totalRows = allRows.length;
 
           const res = await fetch(activeConfig.endpoint, {
             method: 'POST',

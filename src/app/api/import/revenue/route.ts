@@ -21,6 +21,7 @@ export async function POST(request: Request) {
         rows: Record<string, unknown>[];
         chunk: number;
         totalChunks: number;
+        totalRows?: number;
         filename?: string;
         importRunId?: string;
       };
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
         return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
       }
 
-      const { rows: rawRows, chunk, totalChunks, filename, importRunId: existingRunId } = json;
+      const { rows: rawRows, chunk, totalChunks, totalRows, filename, importRunId: existingRunId } = json;
 
       let parseResult: Awaited<ReturnType<typeof parseRevenueFromRows>>;
       try {
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
             reportType: 'REVENUE_ANALYSIS',
             filename: filename ?? 'unknown',
             uploadedBy: ctx.userId,
-            rowsRead: 0, // updated on last chunk
+            rowsRead: totalRows ?? 0,
             periodStart: periodDate,
             periodEnd: periodDate,
           },
@@ -115,13 +116,14 @@ export async function POST(request: Request) {
         }
       }
 
-      // Last chunk: update ImportRun with final row count
-      if (chunk === totalChunks - 1) {
-        await prisma.importRun.update({
-          where: { id: importRunId },
-          data: { rowsCreated: chunkCreated, rowsErrored: chunkErrored },
-        });
-      }
+      // Every chunk: increment running totals on ImportRun
+      await prisma.importRun.update({
+        where: { id: importRunId },
+        data: {
+          rowsCreated: { increment: chunkCreated },
+          rowsErrored: { increment: chunkErrored },
+        },
+      });
 
       return Response.json({ success: true, importRunId, chunkCreated, chunkErrored, chunk });
     }
