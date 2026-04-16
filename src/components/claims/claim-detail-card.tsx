@@ -64,7 +64,7 @@ interface ClaimDetailData {
   reserveUtilisationPct: number | null;
 
   // Flags
-  deltaFlags: string[] | null;
+  deltaFlags: Record<string, boolean> | null;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -261,10 +261,10 @@ export function ClaimDetailCard({ claim }: { claim: ClaimDetailData }) {
       </Section>
 
       {/* Delta flags */}
-      {claim.deltaFlags && claim.deltaFlags.length > 0 && (
+      {claim.deltaFlags && Object.keys(claim.deltaFlags).filter(k => claim.deltaFlags![k]).length > 0 && (
         <Section title="Change Flags">
           <div className="flex flex-wrap gap-2">
-            {claim.deltaFlags.map(flag => {
+            {Object.keys(claim.deltaFlags).filter(k => claim.deltaFlags![k]).map(flag => {
               const meta = DELTA_FLAG_LABELS[flag];
               return (
                 <Badge key={flag} variant={meta?.variant ?? 'default'}>

@@ -56,7 +56,7 @@ export interface ClaimSnapshot {
   notificationGapDays?: number | null;
   reserveUtilisationPct?: number | null;
   complexityWeight?: number | null;
-  deltaFlags?: string[] | null;
+  deltaFlags?: Record<string, boolean> | null;
   isSlaBreach: boolean;
   daysInCurrentStatus?: number | null;
 }

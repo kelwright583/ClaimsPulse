@@ -76,7 +76,8 @@ export async function GET() {
         secondaryStatus: s.secondaryStatus,
         cause: s.cause,
         totalOs: Number(s.totalOs ?? 0),
-        deltaFlags: Array.isArray(s.deltaFlags) ? (s.deltaFlags as string[]) : [],
+        deltaFlags: (s.deltaFlags && typeof s.deltaFlags === 'object' && !Array.isArray(s.deltaFlags))
+          ? s.deltaFlags as Record<string, boolean> : {},
         daysInCurrentStatus: s.daysInCurrentStatus,
         complexityWeight: s.complexityWeight,
       });

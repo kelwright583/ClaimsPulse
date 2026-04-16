@@ -64,8 +64,7 @@ export async function GET() {
 
     const slaBreachCount = snapshots.filter(s => s.isSlaBreach).length;
     const finalisedToday = snapshots.filter(s =>
-      Array.isArray(s.deltaFlags) &&
-      (s.deltaFlags as string[]).includes('finalised'),
+      (s.deltaFlags as Record<string, boolean> | null)?.['finalised'] === true,
     ).length;
 
     // Pending management approvals
@@ -117,7 +116,8 @@ export async function GET() {
         secondaryStatus: s.secondaryStatus,
         cause: s.cause,
         totalOs: Number(s.totalOs ?? 0),
-        deltaFlags: Array.isArray(s.deltaFlags) ? (s.deltaFlags as string[]) : [],
+        deltaFlags: (s.deltaFlags && typeof s.deltaFlags === 'object' && !Array.isArray(s.deltaFlags))
+          ? s.deltaFlags as Record<string, boolean> : {},
         daysInCurrentStatus: s.daysInCurrentStatus,
         complexityWeight: s.complexityWeight,
       });

@@ -116,11 +116,12 @@ export async function GET() {
       }
 
       // Delta flags
-      const flags = Array.isArray(s.deltaFlags) ? s.deltaFlags as string[] : [];
-      if (flags.includes('new_claim')) newClaims.count++;
-      if (flags.includes('status_change') || flags.includes('secondary_status_change')) statusChanges.count++;
-      if (flags.includes('value_jump')) valueJumps.count++;
-      if (flags.includes('finalised')) finalisedCount.count++;
+      const flags = (s.deltaFlags && typeof s.deltaFlags === 'object' && !Array.isArray(s.deltaFlags))
+        ? s.deltaFlags as Record<string, boolean> : {};
+      if (flags['new_claim']) newClaims.count++;
+      if (flags['status_changed'] || flags['secondary_status_change']) statusChanges.count++;
+      if (flags['value_jump_20pct']) valueJumps.count++;
+      if (flags['finalised']) finalisedCount.count++;
 
       // Reserve flags
       const utilPct = Number(s.reserveUtilisationPct ?? 0);
@@ -139,7 +140,7 @@ export async function GET() {
       where: {
         snapshotDate,
         claimStatus: 'Finalised',
-        deltaFlags: { array_contains: ['finalised'] },
+        deltaFlags: { path: ['finalised'], equals: true },
       },
       select: { handler: true },
     });

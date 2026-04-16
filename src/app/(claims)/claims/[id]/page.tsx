@@ -104,7 +104,9 @@ export default async function ClaimDetailPage({ params }: PageProps) {
     intimatedAmount: latest.intimatedAmount !== null ? Number(latest.intimatedAmount) : null,
     totalIncurred: latest.totalIncurred !== null ? Number(latest.totalIncurred) : null,
     reserveUtilisationPct: latest.reserveUtilisationPct !== null ? Number(latest.reserveUtilisationPct) : null,
-    deltaFlags: Array.isArray(latest.deltaFlags) ? latest.deltaFlags as string[] : null,
+    deltaFlags: (latest.deltaFlags && typeof latest.deltaFlags === 'object' && !Array.isArray(latest.deltaFlags))
+      ? latest.deltaFlags as Record<string, boolean>
+      : null,
   };
 
   const statusColor =

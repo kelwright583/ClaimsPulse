@@ -64,7 +64,7 @@ export interface HandlerSnapshot {
   secondaryStatus: string | null;
   cause: string | null;
   totalOs: number;
-  deltaFlags: string[];
+  deltaFlags: Record<string, boolean>;
   daysInCurrentStatus: number | null;
   complexityWeight: number | null;
 }
@@ -120,7 +120,7 @@ export function computeHandlerMetrics(
 
   // Zero activity: open claims with no delta flags and days_in_current_status > 7
   const zeroActivity = openSnapshots.filter(
-    s => (s.daysInCurrentStatus ?? 0) > 7 && s.deltaFlags.length === 0,
+    s => (s.daysInCurrentStatus ?? 0) > 7 && Object.keys(s.deltaFlags).length === 0,
   ).length;
   const zeroActivityPct =
     openClaims > 0 ? (zeroActivity / openClaims) * 100 : 0;
@@ -131,7 +131,7 @@ export function computeHandlerMetrics(
 
   // Reopen rate
   const reopened = snapshots.filter(s =>
-    s.deltaFlags.includes('reopened'),
+    s.deltaFlags['reopened'] === true,
   ).length;
   const reopenRate = totalClaims > 0 ? (reopened / totalClaims) * 100 : 0;
 
