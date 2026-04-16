@@ -108,7 +108,7 @@ export function BigClaimsWatch({ filters: _filters }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E8EEF8" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(v: number) => [v, 'Claims']} />
+                <Tooltip formatter={(v) => [typeof v === 'number' ? v : Number(v ?? 0), 'Claims']} />
                 <Bar dataKey="count" fill="#1E5BC6" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
