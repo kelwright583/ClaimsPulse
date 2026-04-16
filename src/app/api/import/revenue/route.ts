@@ -58,9 +58,13 @@ export async function POST(request: Request) {
     },
   });
 
-  // Chunk at 1,000 rows (1,000 × 19 cols = 19,000 params — well under PostgreSQL's 65,535 limit).
+  // Delete existing records for this period before re-importing.
+  // PremiumRecord has no unique constraint so re-imports would create duplicates without this.
+  await prisma.premiumRecord.deleteMany({ where: { periodDate } });
+
+  // Chunk at 2,000 rows (2,000 × 19 cols = 38,000 params — well under PostgreSQL's 65,535 limit).
   // A single createMany with 71k rows exceeds the limit and always crashes.
-  const CHUNK = 1000;
+  const CHUNK = 2000;
   let created = 0;
   let errored = 0;
   let firstChunkError: string | null = null;

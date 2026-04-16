@@ -182,38 +182,67 @@ export async function POST(request: Request) {
     };
   });
 
-  // Bulk-insert in chunks of 500 rows.
-  // On re-import (rows already exist for this date): delete first, then re-insert.
-  // This avoids per-row upsert round-trips which blow the transaction timeout on large files.
-  const CHUNK = 500;
-  const isReimport = existingClaimIds.size > 0;
-
   let created = 0;
   let updated = 0;
   let errored = 0;
   const errors: Array<{ claimId: string; error: string }> = [];
 
-  if (isReimport) {
-    await prisma.claimSnapshot.deleteMany({ where: { snapshotDate } });
+  // Split rows into new vs existing for this snapshot date
+  const toCreate = rowDataList.filter(({ claimId }) => !existingClaimIds.has(claimId));
+  const toUpdate = rowDataList.filter(({ claimId }) => existingClaimIds.has(claimId));
+
+  // --- Bulk-create new snapshots in chunks of 500 ---
+  if (toCreate.length > 0) {
+    const CREATE_CHUNK = 500;
+    for (let i = 0; i < toCreate.length; i += CREATE_CHUNK) {
+      const chunk = toCreate.slice(i, i + CREATE_CHUNK);
+      try {
+        const result = await prisma.claimSnapshot.createMany({
+          data: chunk.map(({ data }) => data),
+          skipDuplicates: true,
+        });
+        created += result.count;
+      } catch {
+        for (const { claimId, data } of chunk) {
+          try {
+            await prisma.claimSnapshot.create({ data });
+            created++;
+          } catch (rowErr) {
+            errored++;
+            errors.push({ claimId, error: String(rowErr) });
+          }
+        }
+      }
+    }
   }
 
-  for (let i = 0; i < rowDataList.length; i += CHUNK) {
-    const chunk = rowDataList.slice(i, i + CHUNK);
-    try {
-      await prisma.claimSnapshot.createMany({
-        data: chunk.map(({ data }) => data),
-        skipDuplicates: false,
-      });
-      if (isReimport) { updated += chunk.length; } else { created += chunk.length; }
-    } catch {
-      // Chunk failed — fall back row-by-row for this chunk only
-      for (const { claimId, data } of chunk) {
-        try {
-          await prisma.claimSnapshot.create({ data });
-          if (isReimport) { updated++; } else { created++; }
-        } catch (err) {
-          errored++;
-          errors.push({ claimId, error: String(err) });
+  // --- Batch-update existing snapshots in chunks of 50 (array-form $transaction per chunk) ---
+  if (toUpdate.length > 0) {
+    const UPDATE_CHUNK = 50;
+    for (let i = 0; i < toUpdate.length; i += UPDATE_CHUNK) {
+      const chunk = toUpdate.slice(i, i + UPDATE_CHUNK);
+      try {
+        await prisma.$transaction(
+          chunk.map(({ claimId, data }) =>
+            prisma.claimSnapshot.update({
+              where: { claimId_snapshotDate: { claimId, snapshotDate } },
+              data,
+            })
+          )
+        );
+        updated += chunk.length;
+      } catch {
+        for (const { claimId, data } of chunk) {
+          try {
+            await prisma.claimSnapshot.update({
+              where: { claimId_snapshotDate: { claimId, snapshotDate } },
+              data,
+            });
+            updated++;
+          } catch (rowErr) {
+            errored++;
+            errors.push({ claimId, error: String(rowErr) });
+          }
         }
       }
     }
