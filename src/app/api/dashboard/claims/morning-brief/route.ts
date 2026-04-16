@@ -41,7 +41,13 @@ export async function GET(_request: NextRequest) {
 
     // Alert cards
     const [slaBreaches, bigClaimsOpen, redFlags, unassignedWithPayment] = await Promise.all([
-      prisma.claimSnapshot.count({ where: { snapshotDate, isSlaBreach: true } }),
+      prisma.claimSnapshot.count({
+        where: {
+          snapshotDate,
+          isSlaBreach: true,
+          claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
+        },
+      }),
       prisma.claimSnapshot.count({
         where: {
           snapshotDate,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { SummaryHeader } from './SummaryHeader';
 import { DrillDownFilters } from './DrillDownFilters';
@@ -72,6 +73,12 @@ export function DrillDownModal({ context, onClose }: Props) {
     fetchData();
   }, [fetchData]);
 
+  // Body scroll lock
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   // Close on Escape
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -100,7 +107,7 @@ export function DrillDownModal({ context, onClose }: Props) {
     setPage(1);
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-stretch">
       {/* Backdrop */}
       <div
@@ -182,6 +189,7 @@ export function DrillDownModal({ context, onClose }: Props) {
           onClose={() => setSelectedClaim(null)}
         />
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
