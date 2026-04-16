@@ -1,6 +1,7 @@
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+import { Prisma } from '@prisma/client';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import { prisma } from '@/lib/prisma';
 import { parsePayeeReport } from '@/lib/parsers/payee-parser';
@@ -76,47 +77,72 @@ export async function POST(request: Request) {
     }
 
     const errors: Array<{ claimId: string; error: string }> = [];
-
-    // Bulk-create new rows in chunks of 500 to stay well under the 65k parameter limit
-    const CHUNK = 500;
+    const SQL_CHUNK = 500;
     let created = 0;
 
-    const buildPaymentData = (row: (typeof rows)[number]) => ({
-      importRunId: importRun.id,
-      claimId: row.claimId,
-      handler: row.handler ?? null,
-      chequeNo: row.chequeNo ?? null,
-      payee: row.payee ?? null,
-      payeeVatNr: row.payeeVatNr ?? null,
-      paymentType: row.paymentType ?? null,
-      requestedBy: row.requestedBy ?? null,
-      requestedDate: row.requestedDate ?? null,
-      authorisedDate: row.authorisedDate ?? null,
-      printedDate: row.printedDate ?? null,
-      grossPaidInclVat: row.grossPaidInclVat ?? null,
-      grossPaidExclVat: row.grossPaidExclVat ?? null,
-      netPaidInclVat: row.netPaidInclVat ?? null,
-      broker: row.broker ?? null,
-      policyNumber: row.policyNumber ?? null,
-      insured: row.insured ?? null,
-      claimStatus: row.claimStatus ?? null,
-      sameDayAuthPrint: row.sameDayAuthPrint,
-      selfAuthorised: row.selfAuthorised,
-      daysRequestToprint: row.daysRequestToprint ?? null,
-    });
+    // --- Bulk-insert new payments via $executeRaw (single SQL per chunk) ---
+    for (let i = 0; i < toCreate.length; i += SQL_CHUNK) {
+      const chunk = toCreate.slice(i, i + SQL_CHUNK);
+      if (!chunk.length) continue;
 
-    for (let i = 0; i < toCreate.length; i += CHUNK) {
-      const chunk = toCreate.slice(i, i + CHUNK);
       try {
-        const result = await prisma.payment.createMany({
-          data: chunk.map(buildPaymentData),
-          skipDuplicates: true,
-        });
-        created += result.count;
+        const values = chunk.map(r => Prisma.sql`(
+          gen_random_uuid(),
+          ${importRun.id}::uuid,
+          ${r.claimId},
+          ${r.handler ?? null},
+          ${r.chequeNo ?? null},
+          ${r.payee ?? null},
+          ${r.payeeVatNr ?? null},
+          ${r.paymentType ?? null},
+          ${r.requestedBy ?? null},
+          ${r.requestedDate ?? null}::date,
+          ${r.authorisedDate ?? null}::date,
+          ${r.printedDate ?? null}::date,
+          ${r.grossPaidInclVat ?? null}::decimal,
+          ${r.grossPaidExclVat ?? null}::decimal,
+          ${r.netPaidInclVat ?? null}::decimal,
+          ${r.broker ?? null},
+          ${r.policyNumber ?? null},
+          ${r.insured ?? null},
+          ${r.claimStatus ?? null},
+          ${r.sameDayAuthPrint},
+          ${r.selfAuthorised},
+          ${r.daysRequestToprint ?? null}::int
+        )`);
+
+        await prisma.$executeRaw`
+          INSERT INTO payments (
+            id, import_run_id, claim_id, handler, cheque_no, payee,
+            payee_vat_nr, payment_type, requested_by,
+            requested_date, authorised_date, printed_date,
+            gross_paid_incl_vat, gross_paid_excl_vat, net_paid_incl_vat,
+            broker, policy_number, insured, claim_status,
+            same_day_auth_print, self_authorised, days_request_to_print
+          ) VALUES ${Prisma.join(values)}
+        `;
+        created += chunk.length;
       } catch {
         for (const row of chunk) {
           try {
-            await prisma.payment.create({ data: buildPaymentData(row) });
+            await prisma.$executeRaw`
+              INSERT INTO payments (
+                id, import_run_id, claim_id, handler, cheque_no, payee,
+                payee_vat_nr, payment_type, requested_by,
+                requested_date, authorised_date, printed_date,
+                gross_paid_incl_vat, gross_paid_excl_vat, net_paid_incl_vat,
+                broker, policy_number, insured, claim_status,
+                same_day_auth_print, self_authorised, days_request_to_print
+              ) VALUES (
+                gen_random_uuid(), ${importRun.id}::uuid, ${row.claimId},
+                ${row.handler ?? null}, ${row.chequeNo ?? null}, ${row.payee ?? null},
+                ${row.payeeVatNr ?? null}, ${row.paymentType ?? null}, ${row.requestedBy ?? null},
+                ${row.requestedDate ?? null}::date, ${row.authorisedDate ?? null}::date, ${row.printedDate ?? null}::date,
+                ${row.grossPaidInclVat ?? null}::decimal, ${row.grossPaidExclVat ?? null}::decimal, ${row.netPaidInclVat ?? null}::decimal,
+                ${row.broker ?? null}, ${row.policyNumber ?? null}, ${row.insured ?? null}, ${row.claimStatus ?? null},
+                ${row.sameDayAuthPrint}, ${row.selfAuthorised}, ${row.daysRequestToprint ?? null}::int
+              )
+            `;
             created++;
           } catch (rowErr) {
             errors.push({ claimId: row.claimId, error: String(rowErr) });
@@ -125,35 +151,34 @@ export async function POST(request: Request) {
       }
     }
 
-    // Update existing rows individually (typically few)
+    // --- Update existing payments via $executeRaw ---
     let updated = 0;
     for (const { id, row } of toUpdate) {
       try {
-        await prisma.payment.update({
-          where: { id },
-          data: {
-            importRunId: importRun.id,
-            handler: row.handler ?? null,
-            chequeNo: row.chequeNo ?? null,
-            payee: row.payee ?? null,
-            payeeVatNr: row.payeeVatNr ?? null,
-            paymentType: row.paymentType ?? null,
-            requestedBy: row.requestedBy ?? null,
-            requestedDate: row.requestedDate ?? null,
-            authorisedDate: row.authorisedDate ?? null,
-            printedDate: row.printedDate ?? null,
-            grossPaidInclVat: row.grossPaidInclVat ?? null,
-            grossPaidExclVat: row.grossPaidExclVat ?? null,
-            netPaidInclVat: row.netPaidInclVat ?? null,
-            broker: row.broker ?? null,
-            policyNumber: row.policyNumber ?? null,
-            insured: row.insured ?? null,
-            claimStatus: row.claimStatus ?? null,
-            sameDayAuthPrint: row.sameDayAuthPrint,
-            selfAuthorised: row.selfAuthorised,
-            daysRequestToprint: row.daysRequestToprint ?? null,
-          },
-        });
+        await prisma.$executeRaw`
+          UPDATE payments SET
+            import_run_id     = ${importRun.id}::uuid,
+            handler           = ${row.handler ?? null},
+            cheque_no         = ${row.chequeNo ?? null},
+            payee             = ${row.payee ?? null},
+            payee_vat_nr      = ${row.payeeVatNr ?? null},
+            payment_type      = ${row.paymentType ?? null},
+            requested_by      = ${row.requestedBy ?? null},
+            requested_date    = ${row.requestedDate ?? null}::date,
+            authorised_date   = ${row.authorisedDate ?? null}::date,
+            printed_date      = ${row.printedDate ?? null}::date,
+            gross_paid_incl_vat = ${row.grossPaidInclVat ?? null}::decimal,
+            gross_paid_excl_vat = ${row.grossPaidExclVat ?? null}::decimal,
+            net_paid_incl_vat   = ${row.netPaidInclVat ?? null}::decimal,
+            broker            = ${row.broker ?? null},
+            policy_number     = ${row.policyNumber ?? null},
+            insured           = ${row.insured ?? null},
+            claim_status      = ${row.claimStatus ?? null},
+            same_day_auth_print  = ${row.sameDayAuthPrint},
+            self_authorised      = ${row.selfAuthorised},
+            days_request_to_print = ${row.daysRequestToprint ?? null}::int
+          WHERE id = ${id}::uuid
+        `;
         updated++;
       } catch (err) {
         errors.push({ claimId: row.claimId, error: String(err) });
