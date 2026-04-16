@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
+import { BackButton } from '@/components/ui/back-button';
 import { hasPermission } from '@/types/roles';
 import type { UserRole } from '@/types/roles';
 
@@ -124,6 +125,7 @@ export function ProjectList({ role, userId: _userId }: { role: UserRole; userId:
 
   return (
     <div>
+      <BackButton label="Back to Operations" href="/operations" />
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

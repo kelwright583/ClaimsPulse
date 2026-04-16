@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckSquare, Square, Plus, Trash2, ExternalLink, Upload, FileText, FileSpreadsheet, File } from 'lucide-react';
+import { BackButton } from '@/components/ui/back-button';
 import { hasPermission } from '@/types/roles';
 import type { UserRole } from '@/types/roles';
 
@@ -200,6 +201,8 @@ export function ProjectDetail({ id, role, userId: _userId }: { id: string; role:
   }
 
   return (
+    <div>
+    <BackButton label="Back to Projects" href="/operations/projects" />
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Left column (2/3) */}
       <div className="lg:col-span-2 space-y-6">
@@ -472,6 +475,7 @@ export function ProjectDetail({ id, role, userId: _userId }: { id: string; role:
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }

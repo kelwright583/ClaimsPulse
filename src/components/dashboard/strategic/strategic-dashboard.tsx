@@ -149,7 +149,7 @@ export function StrategicDashboard() {
           label="Loss Ratio (YTD)"
           value={formatPct(data.lossRatio !== null ? data.lossRatio * 100 : null)}
           icon={TrendingDown}
-          href="/financial"
+          href="/finance"
           delta={data.lossRatio !== null ? `${(data.lossRatio * 100).toFixed(1)}%` : undefined}
           deltaPositive={data.lossRatio !== null ? data.lossRatio < 0.65 : undefined}
         />
@@ -159,7 +159,7 @@ export function StrategicDashboard() {
           label="Open Claims"
           value={formatInt(data.openClaims)}
           icon={FileText}
-          href="/sla"
+          href="/claims/sla"
         />
 
         {/* 3. SLA compliance */}
@@ -167,7 +167,7 @@ export function StrategicDashboard() {
           label="SLA Compliance"
           value={formatPct(data.slaCompliance)}
           icon={Clock}
-          href="/sla"
+          href="/claims/sla"
           delta={data.slaCompliance !== null ? `${data.slaCompliance.toFixed(1)}%` : undefined}
           deltaPositive={data.slaCompliance !== null ? data.slaCompliance >= 85 : undefined}
         />
@@ -197,7 +197,7 @@ export function StrategicDashboard() {
           label="Big Claims Open"
           value={formatInt(data.bigClaimsCount)}
           icon={AlertTriangle}
-          href="/dashboard"
+          href="/claims"
           delta={data.bigClaimsCount > 0 ? `${data.bigClaimsCount} flagged` : undefined}
           deltaPositive={data.bigClaimsCount === 0}
         />
@@ -207,7 +207,7 @@ export function StrategicDashboard() {
           label="Reserve Position"
           value={data.reservePosition !== null ? formatRand(data.reservePosition) : '—'}
           icon={Shield}
-          href="/financial"
+          href="/finance"
         />
 
         {/* 8. Claims trend (sparkline) */}
@@ -215,7 +215,7 @@ export function StrategicDashboard() {
           label="Claims Trend (6mo)"
           value={data.claimsTrend.length > 0 ? formatInt(data.claimsTrend[data.claimsTrend.length - 1]?.count ?? null) : '—'}
           icon={Activity}
-          href="/dashboard"
+          href="/claims"
         >
           {data.claimsTrend.length > 1 && (
             <div className="h-12 w-full">

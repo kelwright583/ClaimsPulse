@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { FileText, FileSpreadsheet, Presentation, Image, File, Download } from 'lucide-react';
+import { BackButton } from '@/components/ui/back-button';
 import type { UserRole } from '@/types/roles';
 
 interface Doc {
@@ -57,6 +58,7 @@ export function DocumentLibrary({ role: _role }: { role: UserRole }) {
 
   return (
     <div>
+      <BackButton label="Back to Operations" href="/operations" />
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[#0D2761]">Document Library</h1>
         <p className="text-sm text-[#6B7280] mt-0.5">All documents attached across projects.</p>

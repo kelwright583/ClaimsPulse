@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { StatCard } from '@/components/ui/stat-card';
+import { BackButton } from '@/components/ui/back-button';
 import type { UserRole } from '@/types/roles';
 
 interface SnapshotData {
@@ -70,6 +71,7 @@ export function SnapshotClient({ role: _role }: { role: UserRole }) {
 
   return (
     <div>
+      <BackButton label="Back to Operations" href="/operations" />
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div>

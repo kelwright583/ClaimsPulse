@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { FileDown, Loader2 } from 'lucide-react';
+import { BackButton } from '@/components/ui/back-button';
 import type { UserRole } from '@/types/roles';
 
 interface Report {
@@ -48,6 +49,7 @@ export function ReportsCatalogue({ role: _role }: { role: UserRole }) {
 
   return (
     <div>
+      <BackButton label="Back to Operations" href="/operations" />
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[#0D2761]">Reports</h1>
         <p className="text-sm text-[#6B7280] mt-0.5">Generate and download operational reports on demand.</p>

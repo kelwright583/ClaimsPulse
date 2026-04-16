@@ -116,9 +116,15 @@ export async function POST(request: Request) {
       ? Math.floor((snapshotDate.getTime() - new Date(row.dateOfLoss).getTime()) / 86400000)
       : null;
 
-    const reserveUtilisationPct =
+    const reserveUtilisationPctRaw =
       row.intimatedAmount && row.totalIncurred && row.intimatedAmount > 0
         ? (row.totalIncurred / row.intimatedAmount) * 100
+        : null;
+
+    // Cap at 999999.99 — the column is Decimal(8,2)
+    const reserveUtilisationPct =
+      reserveUtilisationPctRaw !== null
+        ? Math.min(reserveUtilisationPctRaw, 999999.99)
         : null;
 
     return {
@@ -183,6 +189,13 @@ export async function POST(request: Request) {
     };
   });
 
+  // Deduplicate by claimId — last row wins (matches upsert behaviour)
+  const deduped = new Map<string, typeof rowDataList[number]>();
+  for (const row of rowDataList) {
+    deduped.set(row.claimId, row);
+  }
+  const dedupedList = Array.from(deduped.values());
+
   let created = 0;
   let updated = 0;
   let errored = 0;
@@ -190,8 +203,8 @@ export async function POST(request: Request) {
 
   const SQL_CHUNK = 200;
 
-  for (let i = 0; i < rowDataList.length; i += SQL_CHUNK) {
-    const chunk = rowDataList.slice(i, i + SQL_CHUNK);
+  for (let i = 0; i < dedupedList.length; i += SQL_CHUNK) {
+    const chunk = dedupedList.slice(i, i + SQL_CHUNK);
     if (!chunk.length) continue;
 
     try {
@@ -335,6 +348,7 @@ export async function POST(request: Request) {
         if (existingClaimIds.has(claimId)) { updated++; } else { created++; }
       }
     } catch (err) {
+      console.error(`[claims-import] chunk ${i}–${i + chunk.length} failed:`, err);
       // Chunk failed — fall back to row-by-row for this chunk only
       for (const { claimId, data: d } of chunk) {
         try {
@@ -421,6 +435,7 @@ export async function POST(request: Request) {
     rowsRead: rows.length,
     rowsCreated: created,
     rowsUpdated: updated,
+    rowsSkipped: rows.length - dedupedList.length,
     rowsErrored: errored,
     snapshotDate: snapshotDate.toISOString(),
   });
