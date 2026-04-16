@@ -46,23 +46,13 @@ export function SummaryHeader({ type, summary }: Props) {
       chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
       break;
 
-    case 'unacknowledged_flags':
+    case 'red_flags':
       stats.push(
         { label: 'Total flags', value: fmtN(summary.totalClaims) },
         { label: 'Oldest flag age', value: fmtN(summary.avgDaysInStatus, 0) + ' days' },
       );
       chartType = 'donut';
       chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
-      break;
-
-    case 'parts_backorder':
-      stats.push(
-        { label: 'Total on backorder', value: fmtN(summary.totalClaims) },
-        { label: 'Avg days waiting', value: fmtN(summary.avgDaysInStatus, 1) },
-        { label: 'Total outstanding', value: fmtR(summary.totalOutstanding) },
-      );
-      chartType = 'horizontal-bar';
-      chartData = (summary.byHandler ?? []).map(h => ({ label: h.handler, value: h.count }));
       break;
 
     case 'big_claims':
@@ -86,10 +76,27 @@ export function SummaryHeader({ type, summary }: Props) {
       chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
       break;
 
-    case 'status_changes':
+    case 'ready_to_close':
+      stats.push(
+        { label: 'Ready to close', value: fmtN(summary.totalClaims) },
+        { label: 'Total paid out', value: fmtR(summary.totalPaid) },
+        { label: 'Avg days in status', value: fmtN(summary.avgDaysInStatus, 1) },
+      );
+      chartType = 'horizontal-bar';
+      chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
+      break;
+
+    case 'newly_breached':
+      stats.push(
+        { label: 'Newly breached', value: fmtN(summary.totalClaims) },
+        { label: 'Total outstanding at risk', value: fmtR(summary.totalOutstanding) },
+        { label: 'Worst breach (days over)', value: fmtN(summary.worstBreachDays) },
+      );
+      chartType = 'bar';
+      chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
+      break;
+
     case 'value_jumps':
-    case 'reopened':
-    case 'newly_stale':
       stats.push(
         { label: 'Count', value: fmtN(summary.totalClaims) },
         { label: 'Total incurred', value: fmtR(summary.totalIncurred) },
@@ -99,25 +106,13 @@ export function SummaryHeader({ type, summary }: Props) {
       chartData = (summary.byHandler ?? []).map(h => ({ label: h.handler, value: h.count }));
       break;
 
-    case 'new_payments':
+    case 'stagnant':
       stats.push(
-        { label: 'Payment count', value: fmtN(summary.totalClaims) },
-        { label: 'Total amount', value: fmtR(summary.totalAmountPaid) },
-        { label: 'Average payment', value: fmtR(summary.avgPayment) },
-        { label: 'Largest payment', value: fmtR(summary.largestPayment) },
+        { label: 'Stagnant claims', value: fmtN(summary.totalClaims) },
+        { label: 'Avg days stuck', value: fmtN(summary.avgDaysInStatus, 1) },
+        { label: 'Total outstanding', value: fmtR(summary.totalOutstanding) },
       );
       chartType = 'bar';
-      chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
-      break;
-
-    case 'finalised':
-      stats.push(
-        { label: 'Total finalised', value: fmtN(summary.totalClaims) },
-        { label: 'Total paid out', value: fmtR(summary.totalPaid) },
-        { label: 'Avg days to finalise', value: fmtN(summary.avgDaysToFinalise, 1) },
-        { label: 'Avg incurred', value: fmtR(summary.totalClaims ? summary.totalIncurred / summary.totalClaims : 0) },
-      );
-      chartType = 'horizontal-bar';
       chartData = (summary.byHandler ?? []).map(h => ({ label: h.handler, value: h.count }));
       break;
 

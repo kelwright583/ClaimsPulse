@@ -16,21 +16,18 @@ import type {
 
 const DEFAULT_SORT: Record<string, string> = {
   sla_breaches: 'daysInCurrentStatus',
-  unacknowledged_flags: 'flaggedAt',
-  parts_backorder: 'daysInCurrentStatus',
+  red_flags: 'flaggedAt',
   big_claims: 'totalIncurred',
   unassigned_payment: 'totalPaid',
-  status_changes: 'totalIncurred',
+  ready_to_close: 'totalPaid',
+  newly_breached: 'daysInCurrentStatus',
   value_jumps: 'totalIncurred',
-  reopened: 'totalIncurred',
-  newly_stale: 'daysInCurrentStatus',
-  new_payments: 'grossPaid',
-  finalised: 'totalPaid',
+  stagnant: 'daysInCurrentStatus',
   handler: 'daysInCurrentStatus',
 };
 
 const DEFAULT_DIR: Record<string, 'asc' | 'desc'> = {
-  unacknowledged_flags: 'asc',
+  red_flags: 'asc',
 };
 
 interface Props {

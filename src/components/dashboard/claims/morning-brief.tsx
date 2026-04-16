@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertTriangle, Clock, Flag, Package, TrendingUp, CreditCard } from 'lucide-react';
+import { AlertTriangle, Flag, TrendingUp, CreditCard } from 'lucide-react';
 import type { UserRole } from '@/types/roles';
 import type { FilterState } from '@/components/dashboard/types';
 import { DrillDownModal } from '@/components/drill-down/DrillDownModal';
@@ -10,33 +10,22 @@ import type { DrillDownContext } from '@/components/drill-down/types';
 interface MorningBriefData {
   alertCards: {
     slaBreaches: number;
-    unacknowledgedFlags: number;
-    partsOnBackorder: number;
+    redFlags: number;
     bigClaimsOpen: number;
     unassignedWithPayment: number;
   };
-  delta: {
+  attention: {
     uploadDate: string | null;
-    statusChanges: number;
+    readyToClose: number;
+    newlyBreached: number;
     valueJumps: number;
-    reopened: number;
-    newlyStale: number;
-    newPayments: number;
-    finalised: number;
+    stagnant: number;
   };
   handlerHealth: Array<{
     handler: string;
     openCount: number;
     breachCount: number;
     lastActivity: string | null;
-  }>;
-  partsBackorder: Array<{
-    claimId: string;
-    insured: string | null;
-    handler: string | null;
-    daysInStatus: number | null;
-    hasAcknowledgedDelay: boolean;
-    expectedDate: string | null;
   }>;
 }
 
@@ -108,6 +97,20 @@ function AlertCard({
   );
 }
 
+function formatUploadTime(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffHours = Math.floor(diffMs / 3600000);
+  const time = d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+  if (diffHours < 24) {
+    const isToday = d.toDateString() === now.toDateString();
+    return isToday ? `Today, ${time}` : `Yesterday, ${time}`;
+  }
+  return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }) + `, ${time}`;
+}
+
 const EMPTY = 'No data yet — import a Claims Outstanding report to populate the dashboard.';
 
 export function MorningBrief({ role: _role, userId: _userId, filters: _filters }: SubViewProps) {
@@ -141,17 +144,35 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
   }
 
   const alerts = data?.alertCards;
-  const delta = data?.delta;
+  const attention = data?.attention;
   const health = data?.handlerHealth ?? [];
 
-  const deltaItems = delta
+  const attentionItems = attention
     ? [
-        { label: 'Status changes', value: delta.statusChanges, type: 'status_changes' as const },
-        { label: 'Value jumps', value: delta.valueJumps, type: 'value_jumps' as const },
-        { label: 'Re-opened', value: delta.reopened, type: 'reopened' as const },
-        { label: 'Newly stale', value: delta.newlyStale, type: 'newly_stale' as const },
-        { label: 'New payments', value: delta.newPayments, type: 'new_payments' as const },
-        { label: 'Finalised', value: delta.finalised, type: 'finalised' as const },
+        {
+          label: 'Ready to close',
+          subtitle: 'R0 outstanding, not terminal',
+          value: attention.readyToClose,
+          type: 'ready_to_close' as const,
+        },
+        {
+          label: 'Newly breached',
+          subtitle: 'SLA breached since last upload',
+          value: attention.newlyBreached,
+          type: 'newly_breached' as const,
+        },
+        {
+          label: 'Value jumps',
+          subtitle: 'Incurred up >20% vs prior',
+          value: attention.valueJumps,
+          type: 'value_jumps' as const,
+        },
+        {
+          label: 'Stagnant claims',
+          subtitle: 'Breached + no status movement',
+          value: attention.stagnant,
+          type: 'stagnant' as const,
+        },
       ]
     : [];
 
@@ -166,7 +187,7 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
           {!alerts ? (
             <p className="text-sm text-[#6B7280]">{EMPTY}</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               <AlertCard
                 label="SLA breaches"
                 value={alerts.slaBreaches}
@@ -175,16 +196,10 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
                 onClick={() => setDrillDown({ type: 'sla_breaches', title: 'SLA Breaches' })}
               />
               <AlertCard
-                label="Unacknowledged flags"
-                value={alerts.unacknowledgedFlags}
+                label="Red flags"
+                value={alerts.redFlags}
                 icon={Flag}
-                onClick={() => setDrillDown({ type: 'unacknowledged_flags', title: 'Unacknowledged Flags' })}
-              />
-              <AlertCard
-                label="Parts on backorder"
-                value={alerts.partsOnBackorder}
-                icon={Package}
-                onClick={() => setDrillDown({ type: 'parts_backorder', title: 'Parts on Backorder' })}
+                onClick={() => setDrillDown({ type: 'red_flags', title: 'Red Flags' })}
               />
               <AlertCard
                 label="Big claims open"
@@ -203,30 +218,47 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
           )}
         </section>
 
-        {/* Section 2 — Delta pills */}
+        {/* Section 2 — What needs attention */}
         <section>
-          <h2 className="text-base font-semibold text-[#0D2761] mb-1">
-            What changed since yesterday&apos;s upload
-            {delta?.uploadDate ? ` — ${delta.uploadDate}` : ''}
-          </h2>
-          {!delta ? (
+          {!attention ? (
             <p className="text-sm text-[#6B7280]">{EMPTY}</p>
           ) : (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {deltaItems.map(item => (
-                <button
-                  key={item.label}
-                  onClick={() => item.value > 0 && setDrillDown({ type: item.type, title: item.label })}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                    item.value > 0
-                      ? 'bg-[#FFF9EC] border-[#F5A800] text-[#92400E] hover:bg-[#FEF3C7] cursor-pointer'
-                      : 'bg-[#F4F6FA] border-[#E8EEF8] text-[#6B7280] cursor-default'
-                  }`}
-                >
-                  <span className="tabular-nums font-bold">{item.value}</span>
-                  <span>{item.label}</span>
-                </button>
-              ))}
+            <div className="bg-white rounded-xl border border-[#E8EEF8] shadow-sm p-4">
+              <div className="flex items-baseline justify-between mb-3">
+                <h2 className="text-base font-semibold text-[#0D2761]">What needs attention</h2>
+                {attention.uploadDate && (
+                  <p className="text-xs text-[#6B7280]">vs {formatUploadTime(attention.uploadDate)}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {attentionItems.map(item => (
+                  <button
+                    key={item.label}
+                    onClick={() => setDrillDown({ type: item.type, title: item.label })}
+                    className={`rounded-lg p-3 text-left transition-colors ${
+                      item.value > 0
+                        ? 'bg-[#FFF9EC] border border-[#F5A800]'
+                        : 'bg-[#F4F6FA] border border-transparent'
+                    }`}
+                  >
+                    <p className={`text-2xl font-bold tabular-nums leading-none ${
+                      item.value > 0 ? 'text-[#92400E]' : 'text-[#6B7280]'
+                    }`}>
+                      {item.value.toLocaleString()}
+                    </p>
+                    <p className={`text-[11px] mt-1 leading-tight ${
+                      item.value > 0 ? 'text-[#92400E]' : 'text-[#6B7280]'
+                    }`}>
+                      {item.label}
+                    </p>
+                    <p className={`text-[10px] mt-0.5 ${
+                      item.value > 0 ? 'text-[#B45309] opacity-70' : 'text-[#9CA3AF]'
+                    }`}>
+                      {item.subtitle}
+                    </p>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </section>

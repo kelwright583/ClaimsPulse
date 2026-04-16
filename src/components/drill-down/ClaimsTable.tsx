@@ -42,7 +42,7 @@ function getColumns(type: DrillDownType): Column[] {
         { key: 'insured', label: 'Insured', render: c => c.insured ?? '—' },
       ];
 
-    case 'unacknowledged_flags':
+    case 'red_flags':
       return [
         ...base,
         { key: 'handler', label: 'Handler', render: c => c.handler ?? '—' },
@@ -53,21 +53,6 @@ function getColumns(type: DrillDownType): Column[] {
         { key: 'flaggedAt', label: 'Date flagged', render: c => fmtDate(c.flaggedAt), sortKey: 'flaggedAt' },
         { key: 'totalIncurred', label: 'Total incurred', render: c => fmtR(c.totalIncurred), sortKey: 'totalIncurred' },
         { key: 'claimStatus', label: 'Status', render: c => c.claimStatus ?? '—' },
-      ];
-
-    case 'parts_backorder':
-      return [
-        ...base,
-        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—' },
-        { key: 'insured', label: 'Insured', render: c => c.insured ?? '—' },
-        { key: 'daysInCurrentStatus', label: 'Days in status', render: c => fmtN(c.daysInCurrentStatus), sortKey: 'daysInCurrentStatus' },
-        { key: 'hasAcknowledgedDelay', label: 'Acknowledged', render: c => (
-          <span className={`text-xs font-medium ${c.hasAcknowledgedDelay ? 'text-[#059669]' : 'text-[#E24B4A]'}`}>
-            {c.hasAcknowledgedDelay ? 'Yes' : 'No'}
-          </span>
-        ) },
-        { key: 'expectedDate', label: 'Expected date', render: c => fmtDate(c.expectedDate) },
-        { key: 'totalOutstanding', label: 'Total outstanding', render: c => fmtR(c.totalOutstanding), sortKey: 'totalOutstanding' },
       ];
 
     case 'big_claims':
@@ -95,19 +80,25 @@ function getColumns(type: DrillDownType): Column[] {
         { key: 'dateOfLoss', label: 'DOL', render: c => fmtDate(c.dateOfLoss) },
       ];
 
-    case 'status_changes':
+    case 'ready_to_close':
       return [
         ...base,
-        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—' },
-        { key: 'prevStatus', label: 'Status change', render: c => (
-          <span className="text-xs">
-            <span className="text-[#6B7280]">{c.prevStatus ?? '—'}</span>
-            {' → '}
-            <span className="text-[#0D2761] font-medium">{c.claimStatus ?? '—'}</span>
-          </span>
-        ) },
+        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—', sortKey: 'handler' },
+        { key: 'claimStatus', label: 'Status', render: c => c.claimStatus ?? '—' },
+        { key: 'secondaryStatus', label: 'Secondary status', render: c => c.secondaryStatus ?? '—' },
+        { key: 'totalPaid', label: 'Total paid', render: c => fmtR(c.totalPaid), sortKey: 'totalPaid' },
+        { key: 'totalRecovery', label: 'Total recovery', render: c => fmtR(c.totalRecovery) },
+        { key: 'totalSalvage', label: 'Total salvage', render: c => fmtR(c.totalSalvage) },
+        { key: 'insured', label: 'Insured', render: c => c.insured ?? '—' },
+      ];
+
+    case 'newly_breached':
+      return [
+        ...base,
+        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—', sortKey: 'handler' },
+        { key: 'secondaryStatus', label: 'Secondary status', render: c => c.secondaryStatus ?? '—' },
         { key: 'daysInCurrentStatus', label: 'Days in status', render: c => fmtN(c.daysInCurrentStatus), sortKey: 'daysInCurrentStatus' },
-        { key: 'totalIncurred', label: 'Total incurred', render: c => fmtR(c.totalIncurred), sortKey: 'totalIncurred' },
+        { key: 'totalOutstanding', label: 'Total outstanding', render: c => fmtR(c.totalOutstanding), sortKey: 'totalOs' },
       ];
 
     case 'value_jumps':
@@ -125,38 +116,14 @@ function getColumns(type: DrillDownType): Column[] {
         { key: 'totalIncurred', label: 'Total incurred', render: c => fmtR(c.totalIncurred), sortKey: 'totalIncurred' },
       ];
 
-    case 'reopened':
-    case 'newly_stale':
+    case 'stagnant':
       return [
         ...base,
-        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—' },
-        { key: 'claimStatus', label: 'Status', render: c => c.claimStatus ?? '—' },
+        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—', sortKey: 'handler' },
+        { key: 'secondaryStatus', label: 'Secondary status', render: c => c.secondaryStatus ?? '—' },
         { key: 'daysInCurrentStatus', label: 'Days in status', render: c => fmtN(c.daysInCurrentStatus), sortKey: 'daysInCurrentStatus' },
-        { key: 'totalIncurred', label: 'Total incurred', render: c => fmtR(c.totalIncurred), sortKey: 'totalIncurred' },
-      ];
-
-    case 'new_payments':
-      return [
-        ...base,
-        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—' },
-        { key: 'payee', label: 'Payee', render: c => c.payee ?? '—' },
-        { key: 'estimateType', label: 'Estimate type', render: c => c.estimateType ?? '—' },
-        { key: 'grossPaid', label: 'Gross paid (incl VAT)', render: c => fmtR(c.grossPaid), sortKey: 'grossPaid' },
-        { key: 'chequeRequested', label: 'Cheque requested', render: c => fmtDate(c.chequeRequested) },
-        { key: 'chequeAuthorised', label: 'Cheque authorised', render: c => fmtDate(c.chequeAuthorised) },
-        { key: 'chequePrinted', label: 'Cheque printed', render: c => fmtDate(c.chequePrinted) },
-      ];
-
-    case 'finalised':
-      return [
-        ...base,
-        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—' },
-        { key: 'cause', label: 'Cause', render: c => c.cause ?? '—' },
-        { key: 'daysToFinalise', label: 'Days to finalise', render: c => fmtN(c.daysToFinalise), sortKey: 'daysToFinalise' },
-        { key: 'totalPaid', label: 'Total paid', render: c => fmtR(c.totalPaid), sortKey: 'totalPaid' },
-        { key: 'totalRecovery', label: 'Total recovery', render: c => fmtR(c.totalRecovery) },
-        { key: 'totalSalvage', label: 'Total salvage', render: c => fmtR(c.totalSalvage) },
-        { key: 'netPaid', label: 'Net paid', render: c => fmtR(c.netPaid), sortKey: 'netPaid' },
+        { key: 'totalOutstanding', label: 'Total outstanding', render: c => fmtR(c.totalOutstanding), sortKey: 'totalOs' },
+        { key: 'insured', label: 'Insured', render: c => c.insured ?? '—' },
       ];
 
     case 'handler':

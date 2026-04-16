@@ -36,9 +36,6 @@ function buildBaseWhere(
       base.isSlaBreach = true;
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
       break;
-    case 'parts_backorder':
-      base.secondaryStatus = 'Vehicle repair - Parts on Back Order';
-      break;
     case 'big_claims':
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
       base.totalIncurred = { gt: 250000 };
@@ -47,20 +44,12 @@ function buildBaseWhere(
       base.handler = null;
       base.totalPaid = { gt: 0 };
       break;
-    case 'status_changes':
-      base.deltaFlags = { path: ['status_changed'], equals: true };
+    case 'ready_to_close':
+      base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
+      base.OR = [{ totalOs: null }, { totalOs: 0 }];
       break;
     case 'value_jumps':
       base.deltaFlags = { path: ['value_jump_20pct'], equals: true };
-      break;
-    case 'reopened':
-      base.deltaFlags = { path: ['reopened'], equals: true };
-      break;
-    case 'newly_stale':
-      base.deltaFlags = { path: ['newly_stale'], equals: true };
-      break;
-    case 'finalised':
-      base.claimStatus = 'Finalised';
       break;
   }
 
@@ -117,16 +106,13 @@ async function toXlsx(
 function titleForType(type: string): string {
   const map: Record<string, string> = {
     sla_breaches: 'SLA Breaches',
-    unacknowledged_flags: 'Unacknowledged Flags',
-    parts_backorder: 'Parts on Backorder',
+    red_flags: 'Red Flags',
     big_claims: 'Big Claims Open',
     unassigned_payment: 'Unassigned + Payment',
-    status_changes: 'Status Changes',
+    ready_to_close: 'Ready to Close',
+    newly_breached: 'Newly Breached SLA',
     value_jumps: 'Value Jumps',
-    reopened: 'Re-opened',
-    newly_stale: 'Newly Stale',
-    new_payments: 'New Payments',
-    finalised: 'Finalised',
+    stagnant: 'Stagnant Claims',
     handler: 'Handler Portfolio',
   };
   return map[type] ?? type;
@@ -157,36 +143,7 @@ export async function GET(request: NextRequest) {
     const today = new Date().toLocaleDateString('en-ZA');
     const title = `${titleForType(type)} — Exported ${today}`;
 
-    if (type === 'new_payments') {
-      const latestRun = await prisma.importRun.findFirst({
-        orderBy: { createdAt: 'desc' },
-        select: { id: true },
-      });
-      const payments = await prisma.payment.findMany({
-        where: latestRun ? { importRunId: latestRun.id } : {},
-        orderBy: { grossPaidInclVat: 'desc' },
-        select: {
-          claimId: true, handler: true, payee: true, paymentType: true,
-          grossPaidInclVat: true, requestedDate: true, authorisedDate: true, printedDate: true,
-          insured: true, claimStatus: true,
-        },
-      });
-      const rows = payments.map(p => ({
-        'Claim': p.claimId,
-        'Handler': p.handler ?? '',
-        'Payee': p.payee ?? '',
-        'Estimate type': p.paymentType ?? '',
-        'Gross paid (incl VAT)': fmtR(n(p.grossPaidInclVat)),
-        'Cheque requested': fmtDate(p.requestedDate),
-        'Cheque authorised': fmtDate(p.authorisedDate),
-        'Cheque printed': fmtDate(p.printedDate),
-        'Insured': p.insured ?? '',
-        'Status': p.claimStatus ?? '',
-      }));
-      return sendFile(rows, format, title, type);
-    }
-
-    if (type === 'unacknowledged_flags') {
+    if (type === 'red_flags') {
       const flags = await prisma.claimFlag.findMany({
         where: { detail: { path: ['actioned'], equals: false } },
         orderBy: { createdAt: 'asc' },

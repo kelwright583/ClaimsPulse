@@ -1,15 +1,12 @@
 export type DrillDownType =
   | 'sla_breaches'
-  | 'unacknowledged_flags'
-  | 'parts_backorder'
+  | 'red_flags'
   | 'big_claims'
   | 'unassigned_payment'
-  | 'status_changes'
+  | 'ready_to_close'
+  | 'newly_breached'
   | 'value_jumps'
-  | 'reopened'
-  | 'newly_stale'
-  | 'new_payments'
-  | 'finalised'
+  | 'stagnant'
   | 'handler';
 
 export interface DrillDownFilters {

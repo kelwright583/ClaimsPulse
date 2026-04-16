@@ -40,9 +40,6 @@ function buildBaseWhere(
       base.isSlaBreach = true;
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
       break;
-    case 'parts_backorder':
-      base.secondaryStatus = 'Vehicle repair - Parts on Back Order';
-      break;
     case 'big_claims':
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
       base.totalIncurred = { gt: 250000 };
@@ -51,20 +48,12 @@ function buildBaseWhere(
       base.handler = null;
       base.totalPaid = { gt: 0 };
       break;
-    case 'status_changes':
-      base.deltaFlags = { path: ['status_changed'], equals: true };
+    case 'ready_to_close':
+      base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
+      base.OR = [{ totalOs: null }, { totalOs: 0 }];
       break;
     case 'value_jumps':
       base.deltaFlags = { path: ['value_jump_20pct'], equals: true };
-      break;
-    case 'reopened':
-      base.deltaFlags = { path: ['reopened'], equals: true };
-      break;
-    case 'newly_stale':
-      base.deltaFlags = { path: ['newly_stale'], equals: true };
-      break;
-    case 'finalised':
-      base.claimStatus = 'Finalised';
       break;
     case 'handler':
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
@@ -120,106 +109,213 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get latest import run for new_payments type
-    const latestRun = type === 'new_payments'
-      ? await prisma.importRun.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true } })
-      : null;
+    if (type === 'newly_breached') {
+      // Get previous snapshot date
+      const prevSnap = await prisma.claimSnapshot.findFirst({
+        where: { snapshotDate: { lt: latestDate } },
+        orderBy: { snapshotDate: 'desc' },
+        select: { snapshotDate: true },
+      });
+      const prevDate = prevSnap?.snapshotDate ?? null;
 
-    if (type === 'new_payments') {
-      // Payments come from the Payment table
-      const paymentWhere: Prisma.PaymentWhereInput = {};
-      if (latestRun) paymentWhere.importRunId = latestRun.id;
+      const [breachedToday, breachedYesterday] = await Promise.all([
+        prisma.claimSnapshot.findMany({
+          where: { snapshotDate: latestDate, isSlaBreach: true },
+          select: { claimId: true },
+        }),
+        prevDate
+          ? prisma.claimSnapshot.findMany({
+              where: { snapshotDate: prevDate, isSlaBreach: true },
+              select: { claimId: true },
+            })
+          : Promise.resolve([]),
+      ]);
 
+      const prevBreachSet = new Set(breachedYesterday.map(r => r.claimId));
+      const newlyBreachedIds = breachedToday
+        .filter(r => !prevBreachSet.has(r.claimId))
+        .map(r => r.claimId);
+
+      const baseWhere: Prisma.ClaimSnapshotWhereInput = {
+        snapshotDate: latestDate,
+        claimId: { in: newlyBreachedIds },
+        isSlaBreach: true,
+      };
       const handler = searchParams.get('handler');
-      if (handler) paymentWhere.handler = handler;
+      const status = searchParams.get('status');
+      if (handler) baseWhere.handler = handler;
+      if (status) baseWhere.claimStatus = status;
 
-      const [total, payments, aggregate] = await Promise.all([
-        prisma.payment.count({ where: paymentWhere }),
-        prisma.payment.findMany({
-          where: paymentWhere,
-          skip,
-          take: limit,
-          orderBy: sort === 'grossPaid' ? { grossPaidInclVat: dir } : { grossPaidInclVat: 'desc' },
+      const slaConfigs = await prisma.slaConfig.findMany({
+        where: { isActive: true },
+        select: { secondaryStatus: true, maxDays: true },
+      });
+      const slaConfigMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c.maxDays]));
+
+      const orderBy: Prisma.ClaimSnapshotOrderByWithRelationInput =
+        sort === 'daysInCurrentStatus' ? { daysInCurrentStatus: dir }
+        : sort === 'totalOs' ? { totalOs: dir }
+        : { daysInCurrentStatus: 'desc' };
+
+      const [total, rows, agg] = await Promise.all([
+        prisma.claimSnapshot.count({ where: baseWhere }),
+        prisma.claimSnapshot.findMany({
+          where: baseWhere, skip, take: limit, orderBy,
           select: {
-            claimId: true,
-            handler: true,
-            payee: true,
-            paymentType: true,
-            grossPaidInclVat: true,
-            requestedDate: true,
-            authorisedDate: true,
-            printedDate: true,
-            insured: true,
-            claimStatus: true,
+            claimId: true, handler: true, claimStatus: true, secondaryStatus: true,
+            cause: true, lossArea: true, insured: true, broker: true,
+            dateOfLoss: true, daysInCurrentStatus: true, daysOpen: true,
+            intimatedAmount: true, totalPaid: true, totalOs: true, totalIncurred: true,
+            totalRecovery: true, totalSalvage: true, isSlaBreach: true,
           },
         }),
-        prisma.payment.aggregate({
-          where: paymentWhere,
-          _sum: { grossPaidInclVat: true },
-          _avg: { grossPaidInclVat: true },
-          _max: { grossPaidInclVat: true },
-          _count: { id: true },
+        prisma.claimSnapshot.aggregate({
+          where: baseWhere,
+          _sum: { totalIncurred: true, totalOs: true, totalPaid: true },
+          _avg: { daysInCurrentStatus: true },
+          _max: { daysInCurrentStatus: true },
         }),
       ]);
 
-      const byEstimateType = await prisma.payment.groupBy({
-        by: ['paymentType'],
-        where: paymentWhere,
-        _count: { id: true },
-        orderBy: { _count: { id: 'desc' } },
+      const byStatusRaw = await prisma.claimSnapshot.groupBy({
+        by: ['secondaryStatus'],
+        where: baseWhere,
+        _count: { claimId: true },
+        orderBy: { _count: { claimId: 'desc' } },
         take: 8,
       });
 
-      const claims = payments.map(p => ({
-        claimId: p.claimId,
-        handler: p.handler ?? null,
-        claimStatus: p.claimStatus ?? null,
-        secondaryStatus: null,
-        cause: null,
-        lossArea: null,
-        insured: p.insured ?? null,
-        broker: null,
-        dateOfLoss: null,
-        daysInCurrentStatus: null,
-        daysOpen: null,
-        intimatedAmount: null,
-        totalPaid: null,
-        totalOutstanding: null,
-        totalIncurred: null,
-        totalRecovery: null,
-        totalSalvage: null,
-        isSlaBreach: false,
-        payee: p.payee ?? null,
-        estimateType: p.paymentType ?? null,
-        grossPaid: p.grossPaidInclVat ? n(p.grossPaidInclVat) : null,
-        chequeRequested: p.requestedDate?.toISOString() ?? null,
-        chequeAuthorised: p.authorisedDate?.toISOString() ?? null,
-        chequePrinted: p.printedDate?.toISOString() ?? null,
+      const claims = rows.map(r => ({
+        claimId: r.claimId,
+        handler: r.handler ?? null,
+        claimStatus: r.claimStatus ?? null,
+        secondaryStatus: r.secondaryStatus ?? null,
+        cause: r.cause ?? null,
+        lossArea: r.lossArea ?? null,
+        insured: r.insured ?? null,
+        broker: r.broker ?? null,
+        dateOfLoss: r.dateOfLoss?.toISOString() ?? null,
+        daysInCurrentStatus: r.daysInCurrentStatus ?? null,
+        daysOpen: r.daysOpen ?? null,
+        intimatedAmount: r.intimatedAmount ? n(r.intimatedAmount) : null,
+        totalPaid: r.totalPaid ? n(r.totalPaid) : null,
+        totalOutstanding: r.totalOs ? n(r.totalOs) : null,
+        totalIncurred: r.totalIncurred ? n(r.totalIncurred) : null,
+        totalRecovery: r.totalRecovery ? n(r.totalRecovery) : null,
+        totalSalvage: r.totalSalvage ? n(r.totalSalvage) : null,
+        isSlaBreach: r.isSlaBreach,
+        daysOverSla: (r.secondaryStatus && r.daysInCurrentStatus != null)
+          ? Math.max(0, r.daysInCurrentStatus - (slaConfigMap.get(r.secondaryStatus) ?? 0))
+          : null,
       }));
-
-      const totalAmountPaid = aggregate._sum.grossPaidInclVat ? n(aggregate._sum.grossPaidInclVat) ?? 0 : 0;
-      const avgPayment = aggregate._avg.grossPaidInclVat ? n(aggregate._avg.grossPaidInclVat) ?? 0 : 0;
-      const largestPayment = aggregate._max.grossPaidInclVat ? n(aggregate._max.grossPaidInclVat) ?? 0 : 0;
 
       return NextResponse.json({
         summary: {
           totalClaims: total,
-          totalIncurred: 0,
-          totalOutstanding: 0,
-          totalPaid: totalAmountPaid,
-          avgDaysInStatus: 0,
-          totalAmountPaid,
-          avgPayment,
-          largestPayment,
-          byStatus: byEstimateType.map(r => ({ status: r.paymentType ?? 'Unknown', count: r._count.id })),
+          totalIncurred: agg._sum.totalIncurred ? n(agg._sum.totalIncurred) ?? 0 : 0,
+          totalOutstanding: agg._sum.totalOs ? n(agg._sum.totalOs) ?? 0 : 0,
+          totalPaid: agg._sum.totalPaid ? n(agg._sum.totalPaid) ?? 0 : 0,
+          avgDaysInStatus: agg._avg.daysInCurrentStatus ? Math.round(Number(agg._avg.daysInCurrentStatus) * 10) / 10 : 0,
+          worstBreachDays: agg._max.daysInCurrentStatus ?? 0,
+          byStatus: byStatusRaw.map(r => ({ status: r.secondaryStatus ?? 'Unknown', count: r._count.claimId })),
         },
         claims,
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       });
     }
 
-    if (type === 'unacknowledged_flags') {
-      // Flags come from ClaimFlag table
+    if (type === 'stagnant') {
+      // Claims breached AND no secondary status change since previous snapshot
+      const breachedSnapshots = await prisma.claimSnapshot.findMany({
+        where: { snapshotDate: latestDate, isSlaBreach: true },
+        select: { claimId: true, deltaFlags: true },
+      });
+
+      const stagnantIds = breachedSnapshots
+        .filter(s => {
+          const flags = s.deltaFlags as Record<string, unknown> | null;
+          return !flags?.['secondary_status_change'];
+        })
+        .map(s => s.claimId);
+
+      const baseWhere: Prisma.ClaimSnapshotWhereInput = {
+        snapshotDate: latestDate,
+        claimId: { in: stagnantIds },
+        isSlaBreach: true,
+      };
+      const handler = searchParams.get('handler');
+      const status = searchParams.get('status');
+      if (handler) baseWhere.handler = handler;
+      if (status) baseWhere.claimStatus = status;
+
+      const orderBy: Prisma.ClaimSnapshotOrderByWithRelationInput =
+        sort === 'totalOs' ? { totalOs: dir }
+        : sort === 'handler' ? { handler: dir }
+        : { daysInCurrentStatus: 'desc' };
+
+      const [total, rows, agg] = await Promise.all([
+        prisma.claimSnapshot.count({ where: baseWhere }),
+        prisma.claimSnapshot.findMany({
+          where: baseWhere, skip, take: limit, orderBy,
+          select: {
+            claimId: true, handler: true, claimStatus: true, secondaryStatus: true,
+            cause: true, lossArea: true, insured: true, broker: true,
+            dateOfLoss: true, daysInCurrentStatus: true, daysOpen: true,
+            intimatedAmount: true, totalPaid: true, totalOs: true, totalIncurred: true,
+            totalRecovery: true, totalSalvage: true, isSlaBreach: true,
+          },
+        }),
+        prisma.claimSnapshot.aggregate({
+          where: baseWhere,
+          _sum: { totalIncurred: true, totalOs: true, totalPaid: true },
+          _avg: { daysInCurrentStatus: true },
+        }),
+      ]);
+
+      const byHandlerRaw = await prisma.claimSnapshot.groupBy({
+        by: ['handler'],
+        where: baseWhere,
+        _count: { claimId: true },
+        orderBy: { _count: { claimId: 'desc' } },
+        take: 8,
+      });
+
+      const claims = rows.map(r => ({
+        claimId: r.claimId,
+        handler: r.handler ?? null,
+        claimStatus: r.claimStatus ?? null,
+        secondaryStatus: r.secondaryStatus ?? null,
+        cause: r.cause ?? null,
+        lossArea: r.lossArea ?? null,
+        insured: r.insured ?? null,
+        broker: r.broker ?? null,
+        dateOfLoss: r.dateOfLoss?.toISOString() ?? null,
+        daysInCurrentStatus: r.daysInCurrentStatus ?? null,
+        daysOpen: r.daysOpen ?? null,
+        intimatedAmount: r.intimatedAmount ? n(r.intimatedAmount) : null,
+        totalPaid: r.totalPaid ? n(r.totalPaid) : null,
+        totalOutstanding: r.totalOs ? n(r.totalOs) : null,
+        totalIncurred: r.totalIncurred ? n(r.totalIncurred) : null,
+        totalRecovery: r.totalRecovery ? n(r.totalRecovery) : null,
+        totalSalvage: r.totalSalvage ? n(r.totalSalvage) : null,
+        isSlaBreach: r.isSlaBreach,
+      }));
+
+      return NextResponse.json({
+        summary: {
+          totalClaims: total,
+          totalIncurred: agg._sum.totalIncurred ? n(agg._sum.totalIncurred) ?? 0 : 0,
+          totalOutstanding: agg._sum.totalOs ? n(agg._sum.totalOs) ?? 0 : 0,
+          totalPaid: agg._sum.totalPaid ? n(agg._sum.totalPaid) ?? 0 : 0,
+          avgDaysInStatus: agg._avg.daysInCurrentStatus ? Math.round(Number(agg._avg.daysInCurrentStatus) * 10) / 10 : 0,
+          byHandler: byHandlerRaw.map(r => ({ handler: r.handler ?? 'Unassigned', count: r._count.claimId })),
+        },
+        claims,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    }
+
+    if (type === 'red_flags') {
       const flagWhere: Prisma.ClaimFlagWhereInput = {
         detail: { path: ['actioned'], equals: false },
       };
@@ -378,21 +474,8 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    // Parts backorder: fetch acknowledged delays
     const claimIds = rows.map(r => r.claimId);
-    let delayMap = new Map<string, { hasDelay: boolean; expectedDate: string | null }>();
-    if (type === 'parts_backorder' && claimIds.length > 0) {
-      const delays = await prisma.acknowledgedDelay.findMany({
-        where: { claimId: { in: claimIds }, isActive: true },
-        select: { claimId: true, expectedDate: true },
-      });
-      for (const d of delays) {
-        delayMap.set(d.claimId, {
-          hasDelay: true,
-          expectedDate: d.expectedDate.toISOString().split('T')[0],
-        });
-      }
-    }
+    const delayMap = new Map<string, { hasDelay: boolean; expectedDate: string | null }>();
 
     // SLA config for breach day computation
     let slaConfigMap = new Map<string, number>();

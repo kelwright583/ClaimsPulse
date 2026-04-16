@@ -23,18 +23,25 @@ export async function GET(_request: NextRequest) {
     const latestDate = await getLatestSnapshotDate();
     if (!latestDate) {
       return NextResponse.json({
-        alertCards: { slaBreaches: 0, unacknowledgedFlags: 0, partsOnBackorder: 0, bigClaimsOpen: 0, unassignedWithPayment: 0 },
-        delta: { uploadDate: null, statusChanges: 0, valueJumps: 0, reopened: 0, newlyStale: 0, newPayments: 0, finalised: 0 },
+        alertCards: { slaBreaches: 0, redFlags: 0, bigClaimsOpen: 0, unassignedWithPayment: 0 },
+        attention: { uploadDate: null, readyToClose: 0, newlyBreached: 0, valueJumps: 0, stagnant: 0 },
         handlerHealth: [],
-        partsBackorder: [],
       });
     }
 
     const snapshotDate = latestDate;
 
-    const [slaBreaches, partsOnBackorder, bigClaimsOpen, unacknowledgedFlags, unassignedWithPayment] = await Promise.all([
+    // Previous snapshot date
+    const prevSnap = await prisma.claimSnapshot.findFirst({
+      where: { snapshotDate: { lt: snapshotDate } },
+      orderBy: { snapshotDate: 'desc' },
+      select: { snapshotDate: true },
+    });
+    const prevDate = prevSnap?.snapshotDate ?? null;
+
+    // Alert cards
+    const [slaBreaches, bigClaimsOpen, redFlags, unassignedWithPayment] = await Promise.all([
       prisma.claimSnapshot.count({ where: { snapshotDate, isSlaBreach: true } }),
-      prisma.claimSnapshot.count({ where: { snapshotDate, secondaryStatus: 'Vehicle repair - Parts on Back Order' } }),
       prisma.claimSnapshot.count({
         where: {
           snapshotDate,
@@ -48,55 +55,51 @@ export async function GET(_request: NextRequest) {
       }),
     ]);
 
+    // Latest import run for uploadDate
     const latestRun = await prisma.importRun.findFirst({
       orderBy: { createdAt: 'desc' },
-      select: { createdAt: true, id: true },
+      select: { createdAt: true },
     });
 
-    // Previous snapshot date for finalised delta
-    const prevSnap = await prisma.claimSnapshot.findFirst({
-      where: { snapshotDate: { lt: snapshotDate } },
-      orderBy: { snapshotDate: 'desc' },
-      select: { snapshotDate: true },
-    });
-    const prevDate = prevSnap?.snapshotDate ?? null;
-
-    // Delta flags from latest snapshot
-    const deltaSnapshots = await prisma.claimSnapshot.findMany({
-      where: { snapshotDate, deltaFlags: { not: undefined } },
-      select: { deltaFlags: true, daysInCurrentStatus: true, claimStatus: true },
+    // Ready to close: open claims with R0 total outstanding
+    const readyToClose = await prisma.claimSnapshot.count({
+      where: {
+        snapshotDate,
+        claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
+        OR: [{ totalOs: null }, { totalOs: 0 }],
+      },
     });
 
-    let statusChanges = 0, valueJumps = 0, reopened = 0, newlyStale = 0;
-    for (const s of deltaSnapshots) {
-      const flags = s.deltaFlags as Record<string, unknown> | null;
-      if (!flags) continue;
-      if (flags['status_changed']) statusChanges++;
-      if (flags['value_jump_20pct']) valueJumps++;
-      if (flags['reopened']) reopened++;
-      if (flags['newly_stale']) newlyStale++;
-    }
-
-    // Finalised: claims finalised in latest snapshot that weren't in previous
-    let finalised = 0;
+    // Newly breached: breached today but NOT yesterday
+    let newlyBreached = 0;
     if (prevDate) {
-      const [finalisedLatest, finalisedPrev] = await Promise.all([
+      const [breachedToday, breachedYesterday] = await Promise.all([
         prisma.claimSnapshot.findMany({
-          where: { snapshotDate, claimStatus: 'Finalised' },
+          where: { snapshotDate, isSlaBreach: true },
           select: { claimId: true },
         }),
         prisma.claimSnapshot.findMany({
-          where: { snapshotDate: prevDate, claimStatus: 'Finalised' },
+          where: { snapshotDate: prevDate, isSlaBreach: true },
           select: { claimId: true },
         }),
       ]);
-      const prevSet = new Set(finalisedPrev.map(r => r.claimId));
-      finalised = finalisedLatest.filter(r => !prevSet.has(r.claimId)).length;
+      const prevBreachSet = new Set(breachedYesterday.map(r => r.claimId));
+      newlyBreached = breachedToday.filter(r => !prevBreachSet.has(r.claimId)).length;
     }
 
-    const newPayments = latestRun
-      ? await prisma.payment.count({ where: { importRunId: latestRun.id } })
-      : 0;
+    // Value jumps and stagnant from delta flags
+    const deltaSnapshots = await prisma.claimSnapshot.findMany({
+      where: { snapshotDate, deltaFlags: { not: undefined } },
+      select: { deltaFlags: true, isSlaBreach: true },
+    });
+
+    let valueJumps = 0, stagnant = 0;
+    for (const s of deltaSnapshots) {
+      const flags = s.deltaFlags as Record<string, unknown> | null;
+      if (!flags) continue;
+      if (flags['value_jump_20pct']) valueJumps++;
+      if (s.isSlaBreach && !flags['secondary_status_change']) stagnant++;
+    }
 
     // Handler health via raw query for efficiency
     const handlerHealthRaw = await prisma.$queryRaw<{
@@ -124,44 +127,16 @@ export async function GET(_request: NextRequest) {
       lastActivity: r.last_activity ? r.last_activity.toISOString() : null,
     }));
 
-    // Parts on backorder
-    const partsRows = await prisma.claimSnapshot.findMany({
-      where: { snapshotDate, secondaryStatus: 'Vehicle repair - Parts on Back Order' },
-      select: { claimId: true, insured: true, handler: true, daysInCurrentStatus: true },
-      take: 50,
-    });
-
-    const partsClaimIds = partsRows.map(r => r.claimId);
-    const activeDelays = partsClaimIds.length > 0
-      ? await prisma.acknowledgedDelay.findMany({
-          where: { claimId: { in: partsClaimIds }, isActive: true },
-          select: { claimId: true, expectedDate: true },
-        })
-      : [];
-    const delayMap = new Map(activeDelays.map(d => [d.claimId, d.expectedDate]));
-
-    const partsBackorder = partsRows.map(r => ({
-      claimId: r.claimId,
-      insured: r.insured,
-      handler: r.handler,
-      daysInStatus: r.daysInCurrentStatus,
-      hasAcknowledgedDelay: delayMap.has(r.claimId),
-      expectedDate: delayMap.get(r.claimId)?.toISOString().split('T')[0] ?? null,
-    }));
-
     return NextResponse.json({
-      alertCards: { slaBreaches, unacknowledgedFlags, partsOnBackorder, bigClaimsOpen, unassignedWithPayment },
-      delta: {
+      alertCards: { slaBreaches, redFlags, bigClaimsOpen, unassignedWithPayment },
+      attention: {
         uploadDate: latestRun?.createdAt.toISOString() ?? null,
-        statusChanges,
+        readyToClose,
+        newlyBreached,
         valueJumps,
-        reopened,
-        newlyStale,
-        newPayments,
-        finalised,
+        stagnant,
       },
       handlerHealth,
-      partsBackorder,
     });
   } catch (e) {
     console.error(e);
