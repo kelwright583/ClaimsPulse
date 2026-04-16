@@ -126,6 +126,18 @@ function getColumns(type: DrillDownType): Column[] {
         { key: 'insured', label: 'Insured', render: c => c.insured ?? '—' },
       ];
 
+    case 'reserve_by_handler':
+      return [
+        ...base,
+        { key: 'handler', label: 'Handler', render: c => c.handler ?? '—', sortKey: 'handler' },
+        { key: 'secondaryStatus', label: 'Secondary status', render: c => c.secondaryStatus ?? '—' },
+        { key: 'intimatedAmount', label: 'Reserve set', render: c => fmtR(c.intimatedAmount), sortKey: 'intimatedAmount' },
+        { key: 'totalPaid', label: 'Cost to date', render: c => fmtR(c.totalPaid), sortKey: 'totalPaid' },
+        { key: 'totalOutstanding', label: 'Outstanding', render: c => fmtR(c.totalOutstanding), sortKey: 'totalOs' },
+        { key: 'totalIncurred', label: 'Total incurred', render: c => fmtR(c.totalIncurred), sortKey: 'totalIncurred' },
+        { key: 'insured', label: 'Insured', render: c => c.insured ?? '—' },
+      ];
+
     case 'handler':
     default:
       return [

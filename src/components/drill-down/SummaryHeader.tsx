@@ -126,6 +126,17 @@ export function SummaryHeader({ type, summary }: Props) {
       chartType = 'donut';
       chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
       break;
+
+    case 'reserve_by_handler':
+      stats.push(
+        { label: 'Claims', value: fmtN(summary.totalClaims) },
+        { label: 'Avg reserve set', value: fmtR(summary.totalClaims ? summary.totalIncurred / summary.totalClaims : 0) },
+        { label: 'Total outstanding', value: fmtR(summary.totalOutstanding) },
+        { label: 'Avg days in status', value: fmtN(summary.avgDaysInStatus, 1) },
+      );
+      chartType = 'horizontal-bar';
+      chartData = (summary.byHandler ?? []).map(h => ({ label: h.handler, value: h.count }));
+      break;
   }
 
   return (

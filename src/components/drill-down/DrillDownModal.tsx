@@ -25,6 +25,7 @@ const DEFAULT_SORT: Record<string, string> = {
   value_jumps: 'totalIncurred',
   stagnant: 'daysInCurrentStatus',
   handler: 'daysInCurrentStatus',
+  reserve_by_handler: 'totalIncurred',
 };
 
 const DEFAULT_DIR: Record<string, 'asc' | 'desc'> = {
@@ -37,13 +38,13 @@ interface Props {
 }
 
 export function DrillDownModal({ context, onClose }: Props) {
-  const { type, title, handlerName } = context;
+  const { type, title, handlerName, cause } = context;
 
   const defaultSort = DEFAULT_SORT[type] ?? 'totalIncurred';
   const defaultDir: 'asc' | 'desc' = DEFAULT_DIR[type] ?? 'desc';
 
   const [filters, setFilters] = useState<Filters>(
-    handlerName ? { handler: handlerName } : {}
+    handlerName ? { handler: handlerName } : cause ? { cause } : {}
   );
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState(defaultSort);
@@ -97,7 +98,7 @@ export function DrillDownModal({ context, onClose }: Props) {
   }
 
   function handleClearFilters() {
-    setFilters(handlerName ? { handler: handlerName } : {});
+    setFilters(handlerName ? { handler: handlerName } : cause ? { cause } : {});
     setPage(1);
   }
 

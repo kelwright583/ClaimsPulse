@@ -54,6 +54,10 @@ function buildBaseWhere(
     case 'value_jumps':
       base.deltaFlags = { path: ['value_jump_20pct'], equals: true };
       break;
+    case 'reserve_by_handler':
+      base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
+      base.intimatedAmount = { gt: 0 };
+      break;
     case 'handler':
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
       break;

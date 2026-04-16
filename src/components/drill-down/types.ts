@@ -7,7 +7,8 @@ export type DrillDownType =
   | 'newly_breached'
   | 'value_jumps'
   | 'stagnant'
-  | 'handler';
+  | 'handler'
+  | 'reserve_by_handler';
 
 export interface DrillDownFilters {
   handler?: string;
@@ -98,4 +99,5 @@ export interface DrillDownContext {
   type: DrillDownType;
   title: string;
   handlerName?: string; // for handler drill-down
+  cause?: string;       // for reserve_by_handler drill-down
 }

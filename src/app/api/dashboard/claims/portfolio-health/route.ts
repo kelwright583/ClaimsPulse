@@ -59,7 +59,8 @@ export async function GET(request: NextRequest) {
         byStatus: [],
         byCause: [],
         outstandingTrend: [],
-        reserveHeatmap: [],
+        reserveSummary: { totalClaims: 0, avgReserve: 0, avgCost: 0, gap: 0, totalOutstanding: 0 },
+        reserveByCause: [],
         claims: [],
       });
     }
@@ -127,34 +128,82 @@ export async function GET(request: NextRequest) {
       totalOs: parseFloat(r.total_os ?? '0'),
     }));
 
-    // Reserve heatmap
-    const heatmapRaw = await prisma.$queryRaw<{
-      handler: string | null;
-      product_line: string | null;
-      count: bigint;
-      avg_utilisation: string;
+    // Reserve adequacy by cause
+    const reserveByCauseRaw = await prisma.$queryRaw<{
+      cause: string | null;
+      claim_count: bigint;
+      avg_reserve: string;
+      avg_incurred: string;
+      avg_paid: string;
+      total_os: string;
+      total_incurred: string;
+      total_intimated: string;
     }[]>`
       SELECT
-        handler,
-        product_line,
-        COUNT(*) AS count,
-        AVG(reserve_utilisation_pct)::text AS avg_utilisation
+        cause,
+        COUNT(*) AS claim_count,
+        AVG(intimated_amount)::text AS avg_reserve,
+        AVG(total_incurred)::text AS avg_incurred,
+        AVG(total_paid)::text AS avg_paid,
+        SUM(total_os)::text AS total_os,
+        SUM(total_incurred)::text AS total_incurred,
+        SUM(intimated_amount)::text AS total_intimated
       FROM claim_snapshots
       WHERE snapshot_date = ${latestDate}
-        AND reserve_utilisation_pct > 80
-        ${productLine ? Prisma.sql`AND product_line ILIKE ${`%${productLine}%`}` : Prisma.empty}
-      GROUP BY handler, product_line
+        AND claim_status NOT IN ('Finalised', 'Cancelled', 'Repudiated')
+        AND intimated_amount > 0
+      GROUP BY cause
+      ORDER BY COUNT(*) DESC
     `;
 
-    const reserveHeatmap = heatmapRaw.map(r => {
-      const util = parseFloat(r.avg_utilisation ?? '0');
+    const reserveByCause = reserveByCauseRaw.map(r => {
+      const avgReserve = parseFloat(r.avg_reserve ?? '0');
+      const avgCost = parseFloat(r.avg_paid ?? '0');
+      const totalIncurred = parseFloat(r.total_incurred ?? '0');
+      const totalIntimated = parseFloat(r.total_intimated ?? '0');
+      const gapPct = avgReserve > 0
+        ? Math.round(((avgCost - avgReserve) / avgReserve) * 100)
+        : 0;
       return {
-        handler: r.handler ?? 'Unassigned',
-        claimType: r.product_line ?? 'Unknown',
-        count: Number(r.count),
-        severity: (util >= 100 ? 'red' : 'amber') as 'ok' | 'amber' | 'red',
+        cause: r.cause ?? 'Unknown',
+        claimCount: Number(r.claim_count),
+        avgReserve: Math.round(avgReserve),
+        avgCost: Math.round(avgCost),
+        gapPct,
+        totalOutstanding: Math.round(parseFloat(r.total_os ?? '0')),
+        utilisationPct: totalIntimated > 0
+          ? Math.round((totalIncurred / totalIntimated) * 100)
+          : 0,
       };
     });
+
+    const overallRaw = await prisma.$queryRaw<{
+      total_claims: bigint;
+      avg_reserve: string;
+      avg_cost: string;
+      total_os: string;
+    }[]>`
+      SELECT
+        COUNT(*) AS total_claims,
+        AVG(intimated_amount)::text AS avg_reserve,
+        AVG(total_paid)::text AS avg_cost,
+        SUM(total_os)::text AS total_os
+      FROM claim_snapshots
+      WHERE snapshot_date = ${latestDate}
+        AND claim_status NOT IN ('Finalised', 'Cancelled', 'Repudiated')
+        AND intimated_amount > 0
+    `;
+
+    const overall = overallRaw[0];
+    const overallAvgReserve = Math.round(parseFloat(overall?.avg_reserve ?? '0'));
+    const overallAvgCost = Math.round(parseFloat(overall?.avg_cost ?? '0'));
+    const reserveSummary = {
+      totalClaims: Number(overall?.total_claims ?? 0),
+      avgReserve: overallAvgReserve,
+      avgCost: overallAvgCost,
+      gap: overallAvgCost - overallAvgReserve,
+      totalOutstanding: Math.round(parseFloat(overall?.total_os ?? '0')),
+    };
 
     // Claims list
     const claimsRaw = await prisma.claimSnapshot.findMany({
@@ -213,7 +262,8 @@ export async function GET(request: NextRequest) {
       byStatus: byStatusRaw.map(s => ({ status: s.claimStatus ?? 'Unknown', count: s._count.claimId })),
       byCause: byCauseRaw.map(s => ({ cause: s.cause ?? 'Unknown', count: s._count.claimId })),
       outstandingTrend,
-      reserveHeatmap,
+      reserveSummary,
+      reserveByCause,
       claims,
     });
   } catch (e) {
