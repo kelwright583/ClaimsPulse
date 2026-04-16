@@ -44,65 +44,50 @@ export async function POST(request: Request) {
     },
   });
 
+  // Chunk at 2,000 rows (2,000 × 19 cols = 38,000 params — well under PostgreSQL's 65,535 limit).
+  // A single createMany with 71k rows exceeds the limit and always crashes.
+  const CHUNK = 2000;
   let created = 0;
   let errored = 0;
 
-  try {
-    const result = await prisma.premiumRecord.createMany({
-      data: rows.map(row => ({
-        importRunId: importRun.id,
-        month: row.month,
-        periodDate: row.periodDate,
-        branch: row.branch,
-        classCode: row.classCode,
-        className: row.className,
-        product: row.product,
-        broker: row.broker,
-        policyNumber: row.policyNumber,
-        insured: row.insured,
-        uwYear: row.uwYear,
-        endorsementType: row.endorsementType,
-        gwp: row.gwp,
-        netWp: row.netWp,
-        quotaShareWp: row.quotaShareWp,
-        gwpVat: row.gwpVat,
-        grossComm: row.grossComm,
-        netComm: row.netComm,
-        grossCommPct: row.grossCommPct,
-      })),
-      skipDuplicates: true,
-    });
-    created = result.count;
-  } catch {
-    // Fall back to row-by-row so partial success is still recorded
-    for (const row of rows) {
-      try {
-        await prisma.premiumRecord.create({
-          data: {
-            importRunId: importRun.id,
-            month: row.month,
-            periodDate: row.periodDate,
-            branch: row.branch,
-            classCode: row.classCode,
-            className: row.className,
-            product: row.product,
-            broker: row.broker,
-            policyNumber: row.policyNumber,
-            insured: row.insured,
-            uwYear: row.uwYear,
-            endorsementType: row.endorsementType,
-            gwp: row.gwp,
-            netWp: row.netWp,
-            quotaShareWp: row.quotaShareWp,
-            gwpVat: row.gwpVat,
-            grossComm: row.grossComm,
-            netComm: row.netComm,
-            grossCommPct: row.grossCommPct,
-          },
-        });
-        created++;
-      } catch {
-        errored++;
+  const buildPremiumData = (row: (typeof rows)[number]) => ({
+    importRunId: importRun.id,
+    month: row.month,
+    periodDate: row.periodDate,
+    branch: row.branch,
+    classCode: row.classCode,
+    className: row.className,
+    product: row.product,
+    broker: row.broker,
+    policyNumber: row.policyNumber,
+    insured: row.insured,
+    uwYear: row.uwYear,
+    endorsementType: row.endorsementType,
+    gwp: row.gwp,
+    netWp: row.netWp,
+    quotaShareWp: row.quotaShareWp,
+    gwpVat: row.gwpVat,
+    grossComm: row.grossComm,
+    netComm: row.netComm,
+    grossCommPct: row.grossCommPct,
+  });
+
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    try {
+      const result = await prisma.premiumRecord.createMany({
+        data: chunk.map(buildPremiumData),
+        skipDuplicates: true,
+      });
+      created += result.count;
+    } catch {
+      for (const row of chunk) {
+        try {
+          await prisma.premiumRecord.create({ data: buildPremiumData(row) });
+          created++;
+        } catch {
+          errored++;
+        }
       }
     }
   }

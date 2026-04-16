@@ -186,41 +186,39 @@ export async function POST(request: Request) {
     };
   });
 
-  // Run all upserts in a single transaction — one DB connection, sequential ops, no per-upsert round-trip overhead
+  // Bulk-insert in chunks of 500 rows.
+  // On re-import (rows already exist for this date): delete first, then re-insert.
+  // This avoids per-row upsert round-trips which blow the transaction timeout on large files.
+  const CHUNK = 500;
+  const isReimport = existingClaimIds.size > 0;
+
   let created = 0;
   let updated = 0;
   let errored = 0;
   const errors: Array<{ claimId: string; error: string }> = [];
 
-  try {
-    // Callback form supports timeout option; array form is capped at 5s by default
-    await prisma.$transaction(
-      async (tx) => {
-        for (const { claimId, data } of rowDataList) {
-          await tx.claimSnapshot.upsert({
-            where: { claimId_snapshotDate: { claimId, snapshotDate } },
-            create: data,
-            update: { ...data },
-          });
+  if (isReimport) {
+    await prisma.claimSnapshot.deleteMany({ where: { snapshotDate } });
+  }
+
+  for (let i = 0; i < rowDataList.length; i += CHUNK) {
+    const chunk = rowDataList.slice(i, i + CHUNK);
+    try {
+      await prisma.claimSnapshot.createMany({
+        data: chunk.map(({ data }) => data),
+        skipDuplicates: false,
+      });
+      if (isReimport) { updated += chunk.length; } else { created += chunk.length; }
+    } catch {
+      // Chunk failed — fall back row-by-row for this chunk only
+      for (const { claimId, data } of chunk) {
+        try {
+          await prisma.claimSnapshot.create({ data });
+          if (isReimport) { updated++; } else { created++; }
+        } catch (err) {
+          errored++;
+          errors.push({ claimId, error: String(err) });
         }
-      },
-      { timeout: 20000 }
-    );
-    created = rowDataList.filter(({ claimId }) => !existingClaimIds.has(claimId)).length;
-    updated = rowDataList.filter(({ claimId }) => existingClaimIds.has(claimId)).length;
-  } catch (txErr) {
-    // Transaction failed — fall back to row-by-row so partial success is recorded
-    for (const { claimId, data } of rowDataList) {
-      try {
-        await prisma.claimSnapshot.upsert({
-          where: { claimId_snapshotDate: { claimId, snapshotDate } },
-          create: data,
-          update: { ...data },
-        });
-        if (existingClaimIds.has(claimId)) { updated++; } else { created++; }
-      } catch (err) {
-        errored++;
-        errors.push({ claimId, error: String(err) });
       }
     }
   }

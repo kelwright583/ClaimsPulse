@@ -48,13 +48,11 @@ export async function POST(request: Request) {
       },
     });
 
-    // Pre-fetch all existing payments that match any claimId+chequeNo in this import (single query)
-    const rowsWithCheque = rows.filter(r => r.chequeNo);
-    const existingPayments = rowsWithCheque.length > 0
+    // Fetch existing payments for any claimId in this import using IN (far cheaper than OR pairs)
+    const claimIdsInImport = [...new Set(rows.map(r => r.claimId))];
+    const existingPayments = claimIdsInImport.length > 0
       ? await prisma.payment.findMany({
-          where: {
-            OR: rowsWithCheque.map(r => ({ claimId: r.claimId, chequeNo: r.chequeNo! })),
-          },
+          where: { claimId: { in: claimIdsInImport } },
           select: { id: true, claimId: true, chequeNo: true },
         })
       : [];
@@ -79,66 +77,46 @@ export async function POST(request: Request) {
 
     const errors: Array<{ claimId: string; error: string }> = [];
 
-    // Bulk-create new rows
+    // Bulk-create new rows in chunks of 500 to stay well under the 65k parameter limit
+    const CHUNK = 500;
     let created = 0;
-    if (toCreate.length > 0) {
+
+    const buildPaymentData = (row: (typeof rows)[number]) => ({
+      importRunId: importRun.id,
+      claimId: row.claimId,
+      handler: row.handler ?? null,
+      chequeNo: row.chequeNo ?? null,
+      payee: row.payee ?? null,
+      payeeVatNr: row.payeeVatNr ?? null,
+      paymentType: row.paymentType ?? null,
+      requestedBy: row.requestedBy ?? null,
+      requestedDate: row.requestedDate ?? null,
+      authorisedDate: row.authorisedDate ?? null,
+      printedDate: row.printedDate ?? null,
+      grossPaidInclVat: row.grossPaidInclVat ?? null,
+      grossPaidExclVat: row.grossPaidExclVat ?? null,
+      netPaidInclVat: row.netPaidInclVat ?? null,
+      broker: row.broker ?? null,
+      policyNumber: row.policyNumber ?? null,
+      insured: row.insured ?? null,
+      claimStatus: row.claimStatus ?? null,
+      sameDayAuthPrint: row.sameDayAuthPrint,
+      selfAuthorised: row.selfAuthorised,
+      daysRequestToprint: row.daysRequestToprint ?? null,
+    });
+
+    for (let i = 0; i < toCreate.length; i += CHUNK) {
+      const chunk = toCreate.slice(i, i + CHUNK);
       try {
         const result = await prisma.payment.createMany({
-          data: toCreate.map(row => ({
-            importRunId: importRun.id,
-            claimId: row.claimId,
-            handler: row.handler ?? null,
-            chequeNo: row.chequeNo ?? null,
-            payee: row.payee ?? null,
-            payeeVatNr: row.payeeVatNr ?? null,
-            paymentType: row.paymentType ?? null,
-            requestedBy: row.requestedBy ?? null,
-            requestedDate: row.requestedDate ?? null,
-            authorisedDate: row.authorisedDate ?? null,
-            printedDate: row.printedDate ?? null,
-            grossPaidInclVat: row.grossPaidInclVat ?? null,
-            grossPaidExclVat: row.grossPaidExclVat ?? null,
-            netPaidInclVat: row.netPaidInclVat ?? null,
-            broker: row.broker ?? null,
-            policyNumber: row.policyNumber ?? null,
-            insured: row.insured ?? null,
-            claimStatus: row.claimStatus ?? null,
-            sameDayAuthPrint: row.sameDayAuthPrint,
-            selfAuthorised: row.selfAuthorised,
-            daysRequestToprint: row.daysRequestToprint ?? null,
-          })),
+          data: chunk.map(buildPaymentData),
           skipDuplicates: true,
         });
-        created = result.count;
-      } catch (err) {
-        // Fall back to row-by-row if createMany fails
-        for (const row of toCreate) {
+        created += result.count;
+      } catch {
+        for (const row of chunk) {
           try {
-            await prisma.payment.create({
-              data: {
-                importRunId: importRun.id,
-                claimId: row.claimId,
-                handler: row.handler ?? null,
-                chequeNo: row.chequeNo ?? null,
-                payee: row.payee ?? null,
-                payeeVatNr: row.payeeVatNr ?? null,
-                paymentType: row.paymentType ?? null,
-                requestedBy: row.requestedBy ?? null,
-                requestedDate: row.requestedDate ?? null,
-                authorisedDate: row.authorisedDate ?? null,
-                printedDate: row.printedDate ?? null,
-                grossPaidInclVat: row.grossPaidInclVat ?? null,
-                grossPaidExclVat: row.grossPaidExclVat ?? null,
-                netPaidInclVat: row.netPaidInclVat ?? null,
-                broker: row.broker ?? null,
-                policyNumber: row.policyNumber ?? null,
-                insured: row.insured ?? null,
-                claimStatus: row.claimStatus ?? null,
-                sameDayAuthPrint: row.sameDayAuthPrint,
-                selfAuthorised: row.selfAuthorised,
-                daysRequestToprint: row.daysRequestToprint ?? null,
-              },
-            });
+            await prisma.payment.create({ data: buildPaymentData(row) });
             created++;
           } catch (rowErr) {
             errors.push({ claimId: row.claimId, error: String(rowErr) });
