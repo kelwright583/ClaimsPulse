@@ -209,15 +209,43 @@ export function UploadZone() {
     setImporting(true);
     setProgress(10);
 
-    const fd = new FormData();
-    fd.append('file', file);
+    let body: FormData | string;
+    let extraHeaders: Record<string, string> = {};
+
+    if (file.size > 5 * 1024 * 1024) {
+      // File exceeds Netlify's 6MB function payload limit — parse client-side and send JSON rows
+      try {
+        const XLSX = await import('xlsx');
+        const { findHeaderRow } = await import('@/lib/parsers/utils');
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const headerRow = findHeaderRow(sheet, activeConfig.requiredColumns);
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: false, range: headerRow });
+        body = JSON.stringify({ rows, filename: file.name });
+        extraHeaders = { 'Content-Type': 'application/json' };
+      } catch {
+        // Client-side parse failed — fall back to direct upload and hope it fits
+        const fd = new FormData();
+        fd.append('file', file);
+        body = fd;
+      }
+    } else {
+      const fd = new FormData();
+      fd.append('file', file);
+      body = fd;
+    }
 
     const progressInterval = setInterval(() => {
       setProgress(prev => Math.min(prev + 7, 88));
     }, 600);
 
     try {
-      const res = await fetch(activeConfig.endpoint, { method: 'POST', body: fd });
+      const res = await fetch(activeConfig.endpoint, {
+        method: 'POST',
+        body,
+        ...(typeof body === 'string' ? { headers: extraHeaders } : {}),
+      });
       clearInterval(progressInterval);
       setProgress(100);
 

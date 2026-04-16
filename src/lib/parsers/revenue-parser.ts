@@ -143,3 +143,71 @@ export function parseRevenueReport(buffer: ArrayBuffer): RevenueParserResult {
 
   return { rows: mapped, periodDate, month };
 }
+
+// Takes pre-parsed rows from the client (for large files sent as JSON instead of raw file).
+// Applies the same mapping/filtering logic as parseRevenueReport but skips the xlsx read step.
+export function parseRevenueFromRows(
+  rawRows: Record<string, unknown>[]
+): RevenueParserResult {
+  let periodDate: Date = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let month = periodDate.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+
+  if (rawRows.length > 0) {
+    const monthVal = rawRows[0]['Month'];
+    if (monthVal instanceof Date && !isNaN(monthVal.getTime())) {
+      periodDate = new Date(monthVal.getFullYear(), monthVal.getMonth(), 1);
+      month = periodDate.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+    } else if (typeof monthVal === 'string') {
+      // ISO string (from JSON.stringify of a Date object, e.g. "2026-04-01T00:00:00.000Z")
+      const iso = new Date(monthVal);
+      if (!isNaN(iso.getTime())) {
+        periodDate = new Date(iso.getFullYear(), iso.getMonth(), 1);
+        month = periodDate.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+      } else {
+        // "Month YYYY" string (e.g. "April 2026")
+        const match = String(monthVal).match(/([A-Za-z]+)\s+(\d{4})/);
+        if (match) {
+          const mIdx = MONTH_NAMES[match[1].toLowerCase()];
+          const yr = parseInt(match[2], 10);
+          if (mIdx !== undefined) {
+            periodDate = new Date(yr, mIdx, 1);
+            month = `${match[1].charAt(0).toUpperCase()}${match[1].slice(1).toLowerCase()} ${yr}`;
+          }
+        }
+      }
+    }
+  }
+
+  const mapped: MappedRevenueRow[] = rawRows
+    .filter(r => {
+      const gwpVal = resolveCol(r, 'gwp');
+      if (gwpVal == null) return false;
+      return toNum(gwpVal) !== null;
+    })
+    .map((r): MappedRevenueRow => {
+      const uwYearRaw = resolveCol(r, 'uwYear');
+      const gwpPctRaw = resolveCol(r, 'grossCommPct');
+      return {
+        month,
+        periodDate,
+        branch: resolveCol(r, 'branch') ? String(resolveCol(r, 'branch')).trim() : null,
+        classCode: resolveCol(r, 'classCode') ? String(resolveCol(r, 'classCode')).trim() : null,
+        className: resolveCol(r, 'className') ? String(resolveCol(r, 'className')).trim() : null,
+        product: resolveCol(r, 'product') ? String(resolveCol(r, 'product')).trim() : null,
+        broker: resolveCol(r, 'broker') ? String(resolveCol(r, 'broker')).trim() : null,
+        policyNumber: resolveCol(r, 'policyNumber') ? String(resolveCol(r, 'policyNumber')).trim() : null,
+        insured: resolveCol(r, 'insured') ? String(resolveCol(r, 'insured')).trim() : null,
+        uwYear: uwYearRaw ? parseInt(String(uwYearRaw), 10) || null : null,
+        endorsementType: resolveCol(r, 'endorsementType') ? String(resolveCol(r, 'endorsementType')).trim() : null,
+        gwp: toNum(resolveCol(r, 'gwp')),
+        netWp: toNum(resolveCol(r, 'netWp')),
+        quotaShareWp: toNum(resolveCol(r, 'quotaShareWp')),
+        gwpVat: toNum(resolveCol(r, 'gwpVat')),
+        grossComm: toNum(resolveCol(r, 'grossComm')),
+        netComm: toNum(resolveCol(r, 'netComm')),
+        grossCommPct: gwpPctRaw != null ? toNum(gwpPctRaw) : null,
+      };
+    });
+
+  return { rows: mapped, periodDate, month };
+}

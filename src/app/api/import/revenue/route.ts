@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import { Prisma } from '@prisma/client';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import { prisma } from '@/lib/prisma';
-import { parseRevenueReport } from '@/lib/parsers/revenue-parser';
+import { parseRevenueReport, parseRevenueFromRows } from '@/lib/parsers/revenue-parser';
 
 export async function POST(request: Request) {
   try {
@@ -13,26 +13,50 @@ export async function POST(request: Request) {
   if (!['HEAD_OF_CLAIMS', 'TEAM_LEADER'].includes(ctx.role))
     return Response.json({ error: 'Forbidden' }, { status: 403 });
 
-  let formData: FormData;
-  try {
-    formData = await request.formData();
-  } catch {
-    return Response.json({ error: 'Invalid form data' }, { status: 400 });
+  const contentType = request.headers.get('content-type') ?? '';
+
+  let rows: Awaited<ReturnType<typeof parseRevenueReport>>['rows'];
+  let periodDate: Date;
+  let filename: string;
+
+  if (contentType.includes('application/json')) {
+    // Large file: client parsed the xlsx and sent rows as JSON
+    let json: { rows: Record<string, unknown>[]; filename?: string };
+    try {
+      json = await request.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    filename = json.filename ?? 'unknown';
+    let parseResult: Awaited<ReturnType<typeof parseRevenueFromRows>>;
+    try {
+      parseResult = parseRevenueFromRows(json.rows ?? []);
+    } catch (err) {
+      return Response.json({ error: 'Failed to process rows', detail: String(err) }, { status: 422 });
+    }
+    rows = parseResult.rows;
+    periodDate = parseResult.periodDate;
+  } else {
+    // Standard upload: receive raw file as FormData
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return Response.json({ error: 'Invalid form data' }, { status: 400 });
+    }
+    const file = formData.get('file') as File | null;
+    if (!file) return Response.json({ error: 'No file provided' }, { status: 400 });
+    filename = file.name;
+    const buffer = await file.arrayBuffer();
+    let parseResult: Awaited<ReturnType<typeof parseRevenueReport>>;
+    try {
+      parseResult = parseRevenueReport(buffer);
+    } catch (err) {
+      return Response.json({ error: 'Failed to parse file', detail: String(err) }, { status: 422 });
+    }
+    rows = parseResult.rows;
+    periodDate = parseResult.periodDate;
   }
-
-  const file = formData.get('file') as File | null;
-  if (!file) return Response.json({ error: 'No file provided' }, { status: 400 });
-
-  const buffer = await file.arrayBuffer();
-
-  let parseResult: Awaited<ReturnType<typeof parseRevenueReport>>;
-  try {
-    parseResult = parseRevenueReport(buffer);
-  } catch (err) {
-    return Response.json({ error: 'Failed to parse file', detail: String(err) }, { status: 422 });
-  }
-
-  const { rows, periodDate } = parseResult;
 
   if (rows.length === 0) {
     return Response.json(
@@ -51,7 +75,7 @@ export async function POST(request: Request) {
   const importRun = await prisma.importRun.create({
     data: {
       reportType: 'REVENUE_ANALYSIS',
-      filename: file.name,
+      filename,
       uploadedBy: ctx.userId,
       rowsRead: rows.length,
       periodStart: periodDate,
