@@ -128,7 +128,7 @@ export function GrowthTrajectory({ filters: _filters }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E8EEF8" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={70} />
-                <Tooltip formatter={(v: number, name: string) => [fmt(v), name]} />
+                <Tooltip formatter={(v, name) => [fmt(typeof v === 'number' ? v : Number(v ?? 0)), name]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="actual" name="Actual NWP" stroke="#1E5BC6" strokeWidth={2} dot={false} connectNulls={false} />
                 <Line type="monotone" dataKey="projected" name="Projected" stroke="#1E5BC6" strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls={false} />
@@ -151,7 +151,7 @@ export function GrowthTrajectory({ filters: _filters }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E8EEF8" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(v: number, name: string) => [v?.toLocaleString('en-ZA'), name]} />
+                <Tooltip formatter={(v, name) => [(typeof v === 'number' ? v : Number(v ?? 0)).toLocaleString('en-ZA'), name]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="actual" name="Actual" stroke="#0D2761" strokeWidth={2} dot={false} connectNulls={false} />
                 <Line type="monotone" dataKey="projected" name="Projected" stroke="#0D2761" strokeWidth={2} strokeDasharray="5 3" dot={false} connectNulls={false} />
@@ -174,7 +174,7 @@ export function GrowthTrajectory({ filters: _filters }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E8EEF8" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} width={70} />
-                <Tooltip formatter={(v: number, name: string) => [fmt(Math.abs(v)), name]} />
+                <Tooltip formatter={(v, name) => [fmt(Math.abs(typeof v === 'number' ? v : Number(v ?? 0))), name]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="renewals" name="Renewals" stackId="a" fill="#1E5BC6" />
                 <Bar dataKey="newBusiness" name="New Business" stackId="a" fill="#065F46" />

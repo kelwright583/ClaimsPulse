@@ -93,7 +93,7 @@ export function FinancialSummary({ filters }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E8EEF8" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${v}%`} />
-                <Tooltip formatter={(v: number) => [`${v?.toFixed(1)}%`]} />
+                <Tooltip formatter={(v) => [`${typeof v === 'number' ? v.toFixed(1) : Number(v ?? 0).toFixed(1)}%`]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="lossRatio" name="Loss ratio" stroke="#1E5BC6" strokeWidth={2} dot={false} />
                 {data.monthlyTrend[0]?.targetLossRatio && (
