@@ -23,7 +23,6 @@ function n(v: unknown): number | null {
 function buildBaseWhere(
   type: string,
   snapshotDate: Date,
-  latestImportRunId: string | null,
   params: URLSearchParams
 ): Prisma.ClaimSnapshotWhereInput {
   const handler = params.get('handler');
@@ -402,7 +401,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Standard snapshot-based query
-    const baseWhere = buildBaseWhere(type, latestDate, latestRun?.id ?? null, searchParams);
+    const baseWhere = buildBaseWhere(type, latestDate, searchParams);
 
     const orderBy: Prisma.ClaimSnapshotOrderByWithRelationInput = {};
     switch (sort) {
