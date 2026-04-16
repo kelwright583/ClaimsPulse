@@ -287,7 +287,7 @@ export function ScenarioModeller({ filters: _filters }: Props) {
                   { label: 'New total NWP', value: fmt(gi.newTotalNwp) },
                   { label: 'New loss ratio', value: pctFmt(gi.newLossRatio) },
                   { label: 'LR change', value: gi.lossRatioChange != null ? `${gi.lossRatioChange > 0 ? '+' : ''}${gi.lossRatioChange.toFixed(1)}pp` : '—' },
-                  { label: 'Product line', value: gi.productLine ?? '—' },
+                  { label: 'Product line', value: productLine },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-[#F4F6FA] rounded-lg p-3">
                     <p className="text-[10px] text-[#6B7280] mb-1">{label}</p>
