@@ -295,17 +295,18 @@ export function PortfolioHealth({ userId: _userId, filters }: SubViewProps) {
           {top8Causes.length === 0 ? (
             <p className="text-xs text-[#6B7280]">{EMPTY}</p>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={top8Causes} layout="vertical" margin={{ left: 0, right: 10 }}>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={top8Causes} layout="vertical" margin={{ left: 10, right: 10, top: 5, bottom: 5 }}>
                 <XAxis type="number" tick={{ fontSize: 10, fill: '#6B7280' }} />
                 <YAxis
                   type="category"
                   dataKey="cause"
-                  width={100}
-                  tick={{ fontSize: 10, fill: '#6B7280' }}
+                  width={140}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  interval={0}
                 />
                 <Tooltip cursor={{ fill: '#F4F6FA' }} />
-                <Bar dataKey="count" fill="#1E5BC6" radius={[0, 3, 3, 0]} />
+                <Bar dataKey="count" fill="#1E5BC6" radius={[0, 3, 3, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           )}
