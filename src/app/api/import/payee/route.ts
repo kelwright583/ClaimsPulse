@@ -49,26 +49,15 @@ export async function POST(request: Request) {
       },
     });
 
-    // Delete existing payments for all claim IDs in this import, then bulk-insert all rows.
-    // This replaces the previous toCreate/toUpdate split that caused 2000+ sequential UPDATEs
-    // and a 504 timeout. 1 DELETE + ~12 chunked INSERTs completes in ~3s.
-    const claimIdsInImport = [...new Set(rows.map(r => r.claimId))];
-    if (claimIdsInImport.length > 0) {
-      await prisma.payment.deleteMany({ where: { claimId: { in: claimIdsInImport } } });
-    }
-
     const errors: Array<{ claimId: string; error: string }> = [];
     const SQL_CHUNK = 200;
-    let created = 0;
+    let upserted = 0;
 
-    // --- Bulk-insert all rows via $executeRaw (single SQL per chunk) ---
     for (let i = 0; i < rows.length; i += SQL_CHUNK) {
       const chunk = rows.slice(i, i + SQL_CHUNK);
-      if (!chunk.length) continue;
 
       try {
         const values = chunk.map(r => Prisma.sql`(
-          gen_random_uuid(),
           ${importRun.id}::uuid,
           ${r.claimId},
           ${r.handler ?? null},
@@ -94,37 +83,71 @@ export async function POST(request: Request) {
 
         await prisma.$executeRaw`
           INSERT INTO payments (
-            id, import_run_id, claim_id, handler, cheque_no, payee,
-            payee_vat_nr, payment_type, requested_by,
+            import_run_id, claim_id, handler, cheque_no,
+            payee, payee_vat_nr, payment_type, requested_by,
             requested_date, authorised_date, printed_date,
             gross_paid_incl_vat, gross_paid_excl_vat, net_paid_incl_vat,
             broker, policy_number, insured, claim_status,
             same_day_auth_print, self_authorised, days_request_to_print
-          ) VALUES ${Prisma.join(values)}
+          )
+          VALUES ${Prisma.join(values)}
+          ON CONFLICT (claim_id, cheque_no)
+          DO UPDATE SET
+            import_run_id       = EXCLUDED.import_run_id,
+            handler             = EXCLUDED.handler,
+            payee               = EXCLUDED.payee,
+            payee_vat_nr        = EXCLUDED.payee_vat_nr,
+            payment_type        = EXCLUDED.payment_type,
+            requested_by        = EXCLUDED.requested_by,
+            requested_date      = EXCLUDED.requested_date,
+            authorised_date     = EXCLUDED.authorised_date,
+            printed_date        = EXCLUDED.printed_date,
+            gross_paid_incl_vat = EXCLUDED.gross_paid_incl_vat,
+            gross_paid_excl_vat = EXCLUDED.gross_paid_excl_vat,
+            net_paid_incl_vat   = EXCLUDED.net_paid_incl_vat,
+            broker              = EXCLUDED.broker,
+            policy_number       = EXCLUDED.policy_number,
+            insured             = EXCLUDED.insured,
+            claim_status        = EXCLUDED.claim_status,
+            same_day_auth_print = EXCLUDED.same_day_auth_print,
+            self_authorised     = EXCLUDED.self_authorised,
+            days_request_to_print = EXCLUDED.days_request_to_print
         `;
-        created += chunk.length;
-      } catch {
+
+        upserted += chunk.length;
+      } catch (err) {
+        // Fallback: insert one at a time to find the problem row
         for (const row of chunk) {
           try {
             await prisma.$executeRaw`
               INSERT INTO payments (
-                id, import_run_id, claim_id, handler, cheque_no, payee,
-                payee_vat_nr, payment_type, requested_by,
+                import_run_id, claim_id, handler, cheque_no,
+                payee, payee_vat_nr, payment_type, requested_by,
                 requested_date, authorised_date, printed_date,
                 gross_paid_incl_vat, gross_paid_excl_vat, net_paid_incl_vat,
                 broker, policy_number, insured, claim_status,
                 same_day_auth_print, self_authorised, days_request_to_print
-              ) VALUES (
-                gen_random_uuid(), ${importRun.id}::uuid, ${row.claimId},
-                ${row.handler ?? null}, ${row.chequeNo ?? null}, ${row.payee ?? null},
-                ${row.payeeVatNr ?? null}, ${row.paymentType ?? null}, ${row.requestedBy ?? null},
-                ${row.requestedDate ?? null}::date, ${row.authorisedDate ?? null}::date, ${row.printedDate ?? null}::date,
-                ${row.grossPaidInclVat ?? null}::decimal, ${row.grossPaidExclVat ?? null}::decimal, ${row.netPaidInclVat ?? null}::decimal,
-                ${row.broker ?? null}, ${row.policyNumber ?? null}, ${row.insured ?? null}, ${row.claimStatus ?? null},
-                ${row.sameDayAuthPrint}, ${row.selfAuthorised}, ${row.daysRequestToprint ?? null}::int
               )
+              VALUES (
+                ${importRun.id}::uuid, ${row.claimId}, ${row.handler ?? null},
+                ${row.chequeNo ?? null}, ${row.payee ?? null}, ${row.payeeVatNr ?? null},
+                ${row.paymentType ?? null}, ${row.requestedBy ?? null},
+                ${row.requestedDate ?? null}::date, ${row.authorisedDate ?? null}::date,
+                ${row.printedDate ?? null}::date,
+                ${row.grossPaidInclVat ?? null}::decimal, ${row.grossPaidExclVat ?? null}::decimal,
+                ${row.netPaidInclVat ?? null}::decimal,
+                ${row.broker ?? null}, ${row.policyNumber ?? null},
+                ${row.insured ?? null}, ${row.claimStatus ?? null},
+                ${row.sameDayAuthPrint}, ${row.selfAuthorised},
+                ${row.daysRequestToprint ?? null}::int
+              )
+              ON CONFLICT (claim_id, cheque_no)
+              DO UPDATE SET
+                import_run_id = EXCLUDED.import_run_id,
+                handler = EXCLUDED.handler,
+                gross_paid_incl_vat = EXCLUDED.gross_paid_incl_vat
             `;
-            created++;
+            upserted++;
           } catch (rowErr) {
             errors.push({ claimId: row.claimId, error: String(rowErr) });
           }
@@ -166,12 +189,12 @@ export async function POST(request: Request) {
       }
     }
 
-    const errored = rows.length - created;
+    const errored = rows.length - upserted;
 
     await prisma.importRun.update({
       where: { id: importRun.id },
       data: {
-        rowsCreated: created,
+        rowsCreated: upserted,
         rowsUpdated: 0,
         rowsErrored: errored,
         errorsJson: errors.length > 0 ? (errors as unknown as object[]) : undefined,
@@ -182,7 +205,7 @@ export async function POST(request: Request) {
       success: true,
       importRunId: importRun.id,
       rowsRead: rows.length,
-      rowsCreated: created,
+      rowsUpserted: upserted,
       rowsErrored: errored,
     });
   } catch (err) {
