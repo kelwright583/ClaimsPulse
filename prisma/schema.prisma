@@ -73,6 +73,7 @@ enum ReportType {
   PAYEE
   REVENUE_ANALYSIS
   MOVEMENT_SUMMARY
+  CLAIMS_REGISTER
 
   @@map("report_type")
 }
@@ -162,6 +163,8 @@ model ClaimSnapshot {
   isTatBreach           Boolean  @default(false) @map("is_tat_breach")
   daysInCurrentStatus   Int?     @map("days_in_current_status")
   daysOpen              Int?     @map("days_open")
+  isStub        Boolean  @default(false) @map("is_stub")
+  isCatastrophe Boolean  @default(false) @map("is_catastrophe")
 
   importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
 
@@ -175,6 +178,7 @@ model ClaimSnapshot {
   @@index([broker])
   @@index([isTatBreach])
   @@index([importRunId])
+  @@index([isStub])
   @@map("claim_snapshots")
 }
 

@@ -183,6 +183,10 @@ export async function POST(request: Request) {
       }
     }
 
+    // NOTE: dateOfRegistration is authoritative from the CLAIMS_REGISTER import.
+    // This COALESCE update is a fallback for claims that have never appeared in a
+    // registration report (e.g. payee-only historical data). It will not overwrite
+    // values already set by the registration importer.
     // Bulk cross-populate notification/registration dates onto ClaimSnapshots.
     // Single UPDATE ... FROM (VALUES ...) replaces N serial round-trips.
     const dateEntries = [...dateLookup.entries()].filter(([, d]) => d.don || d.dor);

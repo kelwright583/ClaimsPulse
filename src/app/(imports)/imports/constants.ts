@@ -2,7 +2,8 @@ export type ReportType =
   | 'CLAIMS_OUTSTANDING'
   | 'PAYEE'
   | 'REVENUE_ANALYSIS'
-  | 'MOVEMENT_SUMMARY';
+  | 'MOVEMENT_SUMMARY'
+  | 'CLAIMS_REGISTER';
 
 export interface ImportTypeConfig {
   key: string;
@@ -277,5 +278,52 @@ export const IMPORT_TYPES: ImportTypeConfig[] = [
     ],
     successMessage:
       'U/W result, IBNR movement, and SASRIA figures have been updated in the financial dashboard.',
+  },
+  {
+    key: 'claims-register',
+    fileTypeKey: 'CLAIMS_REGISTER',
+    title: 'Claims by Initial Registration Date',
+    description:
+      'Provides dateOfRegistration for every claim regardless of payment status. Fixes zero-payment claim age gaps.',
+    frequency: 'Daily',
+    templateHref: '/templates/claims_register_template.csv',
+    endpoint: '/api/import/claims-register',
+    requiredColumns: [
+      'Claim',
+      'Date Captured',
+      'Captured By',
+      'Claim Handler',
+      'Claim Status',
+      'Date of Loss',
+    ],
+    allColumns: [
+      'Claim',
+      'Old Claim ID',
+      'Claim Handler',
+      'Captured By',
+      'Date Captured',
+      'Date of Loss',
+      'Claim Status',
+      'Secondary Status',
+      'Claim Cause',
+      'Intimated Amount',
+      'Insured',
+      'Broker',
+      'Policy',
+      'Class',
+      'Class Name',
+      'ProductGroup',
+      'Organisational Unit',
+      'Gross Incurred',
+      'Catastrophe',
+    ],
+    notes:
+      'Header row is at row 3 (rows 1–2 are title/subtitle). Snapshot date is the upload date.',
+    parserWarnings: [
+      'Rows 1 and 2 are skipped — the parser treats row 3 as headers.',
+      'Claims with no Date Captured are skipped.',
+    ],
+    successMessage:
+      'Registration dates and catastrophe flags have been applied. Claim age calculations are updated.',
   },
 ];

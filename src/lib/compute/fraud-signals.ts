@@ -28,6 +28,7 @@ export async function computeFlags(importRunId: string, snapshotDate: Date): Pro
       repairAuthPaid: true,
       insured: true,
       dateOfLoss: true,
+      dateOfRegistration: true,
       snapshotDate: true,
       isTatBreach: true,
       daysInCurrentStatus: true,
@@ -72,9 +73,11 @@ export async function computeFlags(importRunId: string, snapshotDate: Date): Pro
   for (const s of snapshots) {
     const incurred = Number(s.totalIncurred ?? 0);
     const intimated = Number(s.intimatedAmount ?? 0);
-    const dateOfLoss = s.dateOfLoss ? new Date(s.dateOfLoss) : null;
-    const daysOpen = dateOfLoss
-      ? Math.floor((snapshotDate.getTime() - dateOfLoss.getTime()) / 86400000)
+    const regDate = s.dateOfRegistration ? new Date(s.dateOfRegistration) : null;
+    const lossDate = s.dateOfLoss ? new Date(s.dateOfLoss) : null;
+    const anchorDate = regDate ?? lossDate;
+    const daysOpen = anchorDate
+      ? Math.floor((snapshotDate.getTime() - anchorDate.getTime()) / 86400000)
       : 0;
     if (incurred > 0 && intimated > incurred * 3 && daysOpen > 30) {
       flags.push({
@@ -245,9 +248,12 @@ export async function computeFlags(importRunId: string, snapshotDate: Date): Pro
   for (const s of snapshots) {
     const totalPaid = Number(s.totalPaid ?? 0);
     if (excludedStatuses.has(s.claimStatus ?? '')) continue;
-    const dateOfLoss = s.dateOfLoss ? new Date(s.dateOfLoss) : null;
-    const daysOpen = dateOfLoss
-      ? Math.floor((snapshotDate.getTime() - dateOfLoss.getTime()) / 86400000)
+    const regDate = s.dateOfRegistration ? new Date(s.dateOfRegistration) : null;
+    const lossDate = s.dateOfLoss ? new Date(s.dateOfLoss) : null;
+    const anchorDate = regDate ?? lossDate;
+    const ageBasis = regDate ? 'registration' : 'dol';
+    const daysOpen = anchorDate
+      ? Math.floor((snapshotDate.getTime() - anchorDate.getTime()) / 86400000)
       : 0;
     if (daysOpen > 30 && totalPaid === 0) {
       flags.push({
@@ -255,7 +261,7 @@ export async function computeFlags(importRunId: string, snapshotDate: Date): Pro
         claimId: s.claimId,
         flagType: 'NO_PAYMENT_30_DAYS',
         severity: 'warning',
-        detail: { daysOpen, claimStatus: s.claimStatus },
+        detail: { daysOpen, ageBasis, claimStatus: s.claimStatus },
       });
     }
   }

@@ -10,7 +10,8 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "backfill:ages": "tsx prisma/scripts/backfill-ages.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

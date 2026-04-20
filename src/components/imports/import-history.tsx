@@ -22,6 +22,7 @@ const REPORT_TYPE_LABELS: Record<string, string> = {
   PAYEE: 'Payee Data',
   REVENUE_ANALYSIS: 'Revenue Analysis',
   MOVEMENT_SUMMARY: 'Movement Summary',
+  CLAIMS_REGISTER: 'Claims Register',
 };
 
 function formatDate(iso: string): string {
