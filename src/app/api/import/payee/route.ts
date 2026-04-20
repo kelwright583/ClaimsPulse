@@ -91,7 +91,7 @@ export async function POST(request: Request) {
             same_day_auth_print, self_authorised, days_request_to_print
           )
           VALUES ${Prisma.join(values)}
-          ON CONFLICT (claim_id, cheque_no)
+          ON CONFLICT (claim_id, COALESCE(cheque_no, ''))
           DO UPDATE SET
             import_run_id       = EXCLUDED.import_run_id,
             handler             = EXCLUDED.handler,
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
                 ${row.sameDayAuthPrint}, ${row.selfAuthorised},
                 ${row.daysRequestToprint ?? null}::int
               )
-              ON CONFLICT (claim_id, cheque_no)
+              ON CONFLICT (claim_id, COALESCE(cheque_no, ''))
               DO UPDATE SET
                 import_run_id = EXCLUDED.import_run_id,
                 handler = EXCLUDED.handler,
