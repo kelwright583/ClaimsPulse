@@ -9,7 +9,7 @@ export function PulseDot({ acknowledged = false, size = 8, className = '' }: Pul
     <span
       className={`pulse-dot${acknowledged ? ' acknowledged' : ''} ${className}`}
       style={{ width: size, height: size }}
-      aria-label={acknowledged ? 'Acknowledged' : 'SLA breach'}
+      aria-label={acknowledged ? 'Acknowledged' : 'TAT breach'}
     />
   );
 }

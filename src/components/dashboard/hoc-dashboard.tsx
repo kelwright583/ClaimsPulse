@@ -16,7 +16,7 @@ interface HandlerRow {
   handler: string;
   openClaims: number;
   avgOutstanding: number;
-  slaBreaches: number;
+  tatBreaches: number;
   finalisedThisMonth: number;
 }
 
@@ -31,7 +31,7 @@ interface HocData {
   totalOpenClaims: number;
   totalIncurred: number;
   totalOutstanding: number;
-  slaBreachCount: number;
+  tatBreachCount: number;
   bigClaimsCount: number;
   deltaStats: DeltaStats;
   handlerScorecard: HandlerRow[];
@@ -71,7 +71,7 @@ export function HocDashboard() {
     );
   }
 
-  const criticalBreaches = data.slaBreachCount > 0;
+  const criticalBreaches = data.tatBreachCount > 0;
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -111,14 +111,14 @@ export function HocDashboard() {
               <span className="relative inline-flex rounded-full h-3 w-3 bg-[#991B1B]" />
             </span>
             <p className="text-sm font-semibold text-[#991B1B]">
-              {data.slaBreachCount} claim{data.slaBreachCount !== 1 ? 's' : ''} currently breaching SLA
+              {data.tatBreachCount} claim{data.tatBreachCount !== 1 ? 's' : ''} currently breaching TAT
             </p>
           </div>
           <a
-            href="/sla"
+            href="/tat"
             className="text-xs font-medium text-[#991B1B] hover:underline flex-shrink-0"
           >
-            View SLA Watchlist →
+            View TAT Watchlist →
           </a>
         </div>
       )}
@@ -141,9 +141,9 @@ export function HocDashboard() {
           variant="default"
         />
         <StatCard
-          label="SLA Breaches"
-          value={data.slaBreachCount}
-          variant={data.slaBreachCount > 0 ? 'danger' : 'default'}
+          label="TAT Breaches"
+          value={data.tatBreachCount}
+          variant={data.tatBreachCount > 0 ? 'danger' : 'default'}
         />
         <StatCard
           label="Big Claims"
@@ -187,7 +187,7 @@ export function HocDashboard() {
                     ['handler', 'Handler'],
                     ['openClaims', 'Open Claims'],
                     ['avgOutstanding', 'Avg Outstanding'],
-                    ['slaBreaches', 'SLA Breaches'],
+                    ['tatBreaches', 'TAT Breaches'],
                     ['finalisedThisMonth', 'Finalised'],
                   ] as [SortKey, string][]).map(([key, label]) => (
                     <th
@@ -228,9 +228,9 @@ export function HocDashboard() {
                       <td className="px-4 py-3 tabular-nums text-[#0D2761]">{handler.openClaims}</td>
                       <td className="px-4 py-3 tabular-nums text-[#0D2761]">{formatZAR(handler.avgOutstanding)}</td>
                       <td className="px-4 py-3">
-                        {handler.slaBreaches > 0 ? (
+                        {handler.tatBreaches > 0 ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#991B1B]/10 text-[#991B1B]">
-                            {handler.slaBreaches}
+                            {handler.tatBreaches}
                           </span>
                         ) : (
                           <span className="text-[#6B7280] text-sm">0</span>

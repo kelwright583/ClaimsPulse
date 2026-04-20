@@ -40,7 +40,7 @@ export function SummaryHeader({ type, summary }: Props) {
         { label: 'Total breaches', value: fmtN(summary.totalClaims) },
         { label: 'Total outstanding', value: fmtR(summary.totalOutstanding) },
         { label: 'Worst breach (days over)', value: fmtN(summary.worstBreachDays) },
-        { label: 'Avg days over SLA', value: fmtN(summary.avgDaysOverSla, 1) },
+        { label: 'Avg days over TAT', value: fmtN(summary.avgDaysOverSla, 1) },
       );
       chartType = 'horizontal-bar';
       chartData = (summary.byStatus ?? []).map(s => ({ label: s.status, value: s.count }));
@@ -119,7 +119,7 @@ export function SummaryHeader({ type, summary }: Props) {
     case 'handler':
       stats.push(
         { label: 'Open claims', value: fmtN(summary.totalClaims) },
-        { label: 'SLA breaches', value: fmtN(summary.slaBreachCount) },
+        { label: 'TAT breaches', value: fmtN(summary.tatBreachCount) },
         { label: 'Total outstanding', value: fmtR(summary.totalOutstanding) },
         { label: 'Avg days in status', value: fmtN(summary.avgDaysInStatus, 1) },
       );

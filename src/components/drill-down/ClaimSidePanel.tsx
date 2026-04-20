@@ -89,9 +89,9 @@ export function ClaimSidePanel({ claim, onClose }: Props) {
           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusBadgeClass(d.claimStatus)}`}>
             {d.claimStatus ?? '—'}
           </span>
-          {d.isSlaBreach && (
+          {d.isTatBreach && (
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#FEE2E2] text-[#991B1B]">
-              SLA breach
+              TAT breach
             </span>
           )}
         </div>

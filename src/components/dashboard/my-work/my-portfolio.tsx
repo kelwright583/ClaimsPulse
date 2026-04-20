@@ -31,7 +31,7 @@ interface ClaimRow {
   daysOpen: number | null;
   totalIncurred: number | null;
   totalOs: number | null;
-  slaPosition: 'on-track' | 'at-risk' | 'breach';
+  tatPosition: 'on-track' | 'at-risk' | 'breach';
   hasActiveDelay: boolean;
 }
 
@@ -39,7 +39,7 @@ interface MyPortfolioData {
   stats: {
     openClaims: number;
     totalOutstanding: number;
-    slaBreaches: number;
+    tatBreaches: number;
     activeDelays: number;
   };
   claims: ClaimRow[];
@@ -84,19 +84,19 @@ function HandlerSelector({
   );
 }
 
-const slaBorderMap: Record<ClaimRow['slaPosition'], string> = {
+const slaBorderMap: Record<ClaimRow['tatPosition'], string> = {
   breach: 'border-l-red-500',
   'at-risk': 'border-l-[#F5A800]',
   'on-track': 'border-l-green-500',
 };
 
-const slaBadgeMap: Record<ClaimRow['slaPosition'], string> = {
+const slaBadgeMap: Record<ClaimRow['tatPosition'], string> = {
   breach: 'bg-red-100 text-red-700',
   'at-risk': 'bg-amber-100 text-amber-700',
   'on-track': 'bg-green-100 text-green-700',
 };
 
-const slaLabelMap: Record<ClaimRow['slaPosition'], string> = {
+const slaLabelMap: Record<ClaimRow['tatPosition'], string> = {
   breach: 'Breach',
   'at-risk': 'At risk',
   'on-track': 'On track',
@@ -202,8 +202,8 @@ export default function MyPortfolio({
           <span className="text-sm text-[#0D2761]">{formatZAR(info.getValue())}</span>
         ),
       }),
-      columnHelper.accessor('slaPosition', {
-        header: 'SLA',
+      columnHelper.accessor('tatPosition', {
+        header: 'TAT',
         cell: (info) => {
           const val = info.getValue();
           return (
@@ -265,9 +265,9 @@ export default function MyPortfolio({
           value={formatZAR(data.stats.totalOutstanding)}
         />
         <StatCard
-          label="SLA breaches"
-          value={String(data.stats.slaBreaches)}
-          highlight={data.stats.slaBreaches > 0 ? 'red' : undefined}
+          label="TAT breaches"
+          value={String(data.stats.tatBreaches)}
+          highlight={data.stats.tatBreaches > 0 ? 'red' : undefined}
         />
         <StatCard
           label="Active delays"
@@ -317,7 +317,7 @@ export default function MyPortfolio({
               </thead>
               <tbody className="divide-y divide-[#E8EEF8]">
                 {table.getRowModel().rows.map((row) => {
-                  const sla = row.original.slaPosition;
+                  const sla = row.original.tatPosition;
                   return (
                     <tr
                       key={row.id}

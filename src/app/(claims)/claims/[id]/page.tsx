@@ -33,7 +33,7 @@ export default async function ClaimDetailPage({ params }: PageProps) {
   const { id } = await params;
   const claimId = decodeURIComponent(id);
 
-  const [snapshots, acknowledgedDelays, slaConfigs] = await Promise.all([
+  const [snapshots, acknowledgedDelays, tatConfigs] = await Promise.all([
     prisma.claimSnapshot.findMany({
       where: { claimId },
       orderBy: { snapshotDate: 'asc' },
@@ -42,7 +42,7 @@ export default async function ClaimDetailPage({ params }: PageProps) {
       where: { claimId },
       orderBy: { loggedAt: 'desc' },
     }),
-    prisma.slaConfig.findMany({ where: { isActive: true } }),
+    prisma.tatConfig.findMany({ where: { isActive: true } }),
   ]);
 
   if (snapshots.length === 0) {
@@ -50,7 +50,7 @@ export default async function ClaimDetailPage({ params }: PageProps) {
   }
 
   const latest = snapshots[snapshots.length - 1];
-  const slaMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c]));
+  const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
   const sla = latest.secondaryStatus ? slaMap.get(latest.secondaryStatus) : null;
 
   const serializedLatest = serializeSnapshot(latest as unknown as Record<string, unknown>);
@@ -61,7 +61,7 @@ export default async function ClaimDetailPage({ params }: PageProps) {
     handler: latest.handler,
     claimStatus: latest.claimStatus,
     secondaryStatus: latest.secondaryStatus,
-    isSlaBreach: latest.isSlaBreach,
+    isTatBreach: latest.isTatBreach,
     daysInCurrentStatus: latest.daysInCurrentStatus,
     slaPriority: (sla?.priority as SlaPriority) ?? null,
     policyNumber: latest.policyNumber,
@@ -139,7 +139,7 @@ export default async function ClaimDetailPage({ params }: PageProps) {
             {sla?.priority && (
               <SlaBadge priority={sla.priority as SlaPriority} />
             )}
-            {latest.isSlaBreach && (
+            {latest.isTatBreach && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-[#991B1B]/10 text-[#991B1B] border border-[#991B1B]/20">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#991B1B] opacity-75" />

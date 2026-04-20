@@ -9,7 +9,7 @@ import type { DrillDownContext } from '@/components/drill-down/types';
 
 interface MorningBriefData {
   alertCards: {
-    slaBreaches: number;
+    tatBreaches: number;
     redFlags: number;
     bigClaimsOpen: number;
     unassignedWithPayment: number;
@@ -157,7 +157,7 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
         },
         {
           label: 'Newly breached',
-          subtitle: 'SLA breached since last upload',
+          subtitle: 'TAT breached since last upload',
           value: attention.newlyBreached,
           type: 'newly_breached' as const,
         },
@@ -189,11 +189,11 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               <AlertCard
-                label="SLA breaches"
-                value={alerts.slaBreaches}
+                label="TAT breaches"
+                value={alerts.tatBreaches}
                 icon={AlertTriangle}
                 isRed
-                onClick={() => setDrillDown({ type: 'sla_breaches', title: 'SLA Breaches' })}
+                onClick={() => setDrillDown({ type: 'sla_breaches', title: 'TAT Breaches' })}
               />
               <AlertCard
                 label="Red flags"

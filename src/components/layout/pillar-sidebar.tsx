@@ -14,7 +14,7 @@ import type { LucideIcon } from 'lucide-react';
 import { hasPermission, ROLE_LABELS, getInitials } from '@/components/ui/sidebar-helpers';
 import type { UserRole } from '@/types/roles';
 
-export type PillarKey = 'claims' | 'mailbox' | 'underwriting' | 'finance' | 'operations' | 'strategic' | 'settings';
+export type PillarKey = 'claims' | 'mailbox' | 'underwriting' | 'finance' | 'operations' | 'strategic' | 'settings' | 'imports';
 
 interface NavItem {
   label: string;
@@ -49,12 +49,13 @@ function getPillarNav(pillar: PillarKey, role: UserRole): NavItem[] {
       return [
         { label: 'Overview',      href: '/claims',                       Icon: LayoutGrid,   show: true },
         { label: 'Register',      href: '/claims/register',              Icon: FileText,     show: p.canSeeAllClaims || role === 'CLAIMS_TECHNICIAN' },
-        { label: 'SLA Watchlist', href: '/claims/sla',                   Icon: Clock,        show: true },
+        { label: 'TAT Watchlist', href: '/claims/tat',                   Icon: Clock,        show: true },
         { label: 'Delta',         href: '/claims/delta',                 Icon: ArrowLeftRight, show: p.canSeeAllClaims },
         { label: 'Productivity',  href: '/claims/productivity',          Icon: TrendingUp,   show: p.canSeeTeamProductivity },
         { label: 'Integrity',     href: '/claims/integrity',             Icon: ShieldAlert,  show: p.canSeeIntegrity },
         { label: 'TP Workbench',  href: '/claims/workbenches/tp',        Icon: Users,        show: p.canSeeTpWorkbench },
         { label: 'Salvage',       href: '/claims/workbenches/salvage',   Icon: RefreshCw,    show: p.canSeeSalvageWorkbench },
+        { label: 'Reports',       href: '/claims/reports',               Icon: FileDown,     show: true },
       ];
     case 'mailbox':
       return [
@@ -86,11 +87,15 @@ function getPillarNav(pillar: PillarKey, role: UserRole): NavItem[] {
       ];
     case 'settings':
       return [
-        { label: 'Import Reports', href: '/imports',             Icon: Upload,     show: p.canUploadReports },
         { label: 'General',        href: '/settings/general',    Icon: Settings,   show: true },
-        { label: 'SLA Matrix',     href: '/settings/sla-matrix', Icon: Clock,      show: p.canConfigureSla },
-        { label: 'Targets',        href: '/settings/targets',    Icon: TrendingUp, show: p.canConfigureSla },
-        { label: 'Users',          href: '/admin/users',         Icon: UserCog,    show: p.canManageUsers },
+        { label: 'Claims TAT Matrix', href: '/settings/tat-matrix', Icon: Clock,      show: p.canConfigureSla },
+        { label: 'Targets',        href: '/settings/targets',         Icon: TrendingUp, show: p.canConfigureSla },
+        { label: 'Handler Targets', href: '/settings/handler-targets', Icon: Users,      show: p.canConfigureSla },
+        { label: 'Users',          href: '/admin/users',              Icon: UserCog,    show: p.canManageUsers },
+      ];
+    case 'imports':
+      return [
+        { label: 'Upload Reports', href: '/imports', Icon: Upload, show: p.canUploadReports },
       ];
     default:
       return [];
@@ -105,6 +110,7 @@ const PILLAR_LABELS: Record<PillarKey, string> = {
   operations:   'Operations',
   strategic:    'Strategic',
   settings:     'Settings',
+  imports:      'Imports',
 };
 
 export function PillarSidebar({ pillar, role, fullName, email }: PillarSidebarProps) {

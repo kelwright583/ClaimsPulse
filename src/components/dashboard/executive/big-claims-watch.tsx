@@ -23,7 +23,7 @@ interface Claim {
   totalOs: number | null;
   totalPaid: number | null;
   daysOpen: number | null;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   lossArea: string | null;
 }
 interface TrendPoint { month: string; count: number; totalIncurred: number }
@@ -166,14 +166,14 @@ export function BigClaimsWatch({ filters: _filters }: Props) {
             <table className="w-full text-sm">
               <thead className="bg-[#F4F6FA]">
                 <tr>
-                  {['Claim ID', 'Insured', 'Cause', 'Status', 'Handler', 'Date of loss', 'Total incurred', 'O/S', 'Days open', 'SLA'].map(h => (
+                  {['Claim ID', 'Insured', 'Cause', 'Status', 'Handler', 'Date of loss', 'Total incurred', 'O/S', 'Days open', 'TAT'].map(h => (
                     <th key={h} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[#6B7280] whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {sorted.map(row => (
-                  <tr key={row.claimId} className={`border-t border-[#E8EEF8] ${row.isSlaBreach ? 'bg-[#FEF2F2]' : 'hover:bg-[#F4F6FA]/50'}`}>
+                  <tr key={row.claimId} className={`border-t border-[#E8EEF8] ${row.isTatBreach ? 'bg-[#FEF2F2]' : 'hover:bg-[#F4F6FA]/50'}`}>
                     <td className="px-4 py-2.5 text-xs font-mono font-medium text-[#0D2761]">{row.claimId}</td>
                     <td className="px-4 py-2.5 text-xs text-[#0D2761] max-w-[120px] truncate">{row.insured ?? '—'}</td>
                     <td className="px-4 py-2.5 text-xs text-[#0D2761]">{row.cause ?? '—'}</td>
@@ -184,7 +184,7 @@ export function BigClaimsWatch({ filters: _filters }: Props) {
                     <td className="px-4 py-2.5 text-xs text-[#0D2761]">{fmt(row.totalOs)}</td>
                     <td className="px-4 py-2.5 text-xs text-[#0D2761]">{row.daysOpen ?? '—'}</td>
                     <td className="px-4 py-2.5 text-xs">
-                      {row.isSlaBreach
+                      {row.isTatBreach
                         ? <span className="text-[#991B1B] font-semibold">Breach</span>
                         : <span className="text-[#065F46]">OK</span>}
                     </td>

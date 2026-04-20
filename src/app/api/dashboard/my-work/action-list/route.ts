@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         cause: true,
         totalIncurred: true,
         daysInCurrentStatus: true,
-        isSlaBreach: true,
+        isTatBreach: true,
         handler: true,
       },
     });
@@ -66,8 +66,8 @@ export async function GET(request: NextRequest) {
     const claimIds = snapshots.map(s => s.claimId);
 
     // SLA configs
-    const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
-    const slaMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c]));
+    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
 
     // Acknowledged delays (active)
     const overdueDelays = claimIds.length > 0
@@ -79,21 +79,21 @@ export async function GET(request: NextRequest) {
     const delayMap = new Map(overdueDelays.map(d => [d.claimId, d]));
 
     const items = snapshots.map(s => {
-      const slaConfig = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;
+      const tatConfig = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;
       const delay = delayMap.get(s.claimId);
 
       let priority: Priority = 'standard';
-      if (s.isSlaBreach && slaConfig?.priority === 'critical') {
+      if (s.isTatBreach && tatConfig?.priority === 'critical') {
         priority = 'critical';
-      } else if (s.isSlaBreach || delay?.isOverdue) {
+      } else if (s.isTatBreach || delay?.isOverdue) {
         priority = 'urgent';
       }
 
-      let slaPosition: 'on-track' | 'at-risk' | 'breach' = 'on-track';
-      if (s.isSlaBreach) {
-        slaPosition = 'breach';
-      } else if (slaConfig && s.daysInCurrentStatus && s.daysInCurrentStatus > slaConfig.maxDays * 0.8) {
-        slaPosition = 'at-risk';
+      let tatPosition: 'on-track' | 'at-risk' | 'breach' = 'on-track';
+      if (s.isTatBreach) {
+        tatPosition = 'breach';
+      } else if (tatConfig && s.daysInCurrentStatus && s.daysInCurrentStatus > tatConfig.maxDays * 0.8) {
+        tatPosition = 'at-risk';
       }
 
       return {
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
         totalIncurred: s.totalIncurred ? Number(s.totalIncurred) : null,
         daysInStatus: s.daysInCurrentStatus,
         priority,
-        slaPosition,
+        tatPosition,
         hasOverdueDelay: delay?.isOverdue ?? false,
         expectedDate: delay?.expectedDate ? delay.expectedDate.toISOString().split('T')[0] : null,
       };

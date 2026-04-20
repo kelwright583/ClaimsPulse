@@ -23,7 +23,7 @@ export async function GET(_request: NextRequest) {
     const latestDate = await getLatestSnapshotDate();
     if (!latestDate) {
       return NextResponse.json({
-        alertCards: { slaBreaches: 0, redFlags: 0, bigClaimsOpen: 0, unassignedWithPayment: 0 },
+        alertCards: { tatBreaches: 0, redFlags: 0, bigClaimsOpen: 0, unassignedWithPayment: 0 },
         attention: { uploadDate: null, readyToClose: 0, newlyBreached: 0, valueJumps: 0, stagnant: 0 },
         handlerHealth: [],
       });
@@ -40,11 +40,11 @@ export async function GET(_request: NextRequest) {
     const prevDate = prevSnap?.snapshotDate ?? null;
 
     // Alert cards
-    const [slaBreaches, bigClaimsOpen, redFlags, unassignedWithPayment] = await Promise.all([
+    const [tatBreaches, bigClaimsOpen, redFlags, unassignedWithPayment] = await Promise.all([
       prisma.claimSnapshot.count({
         where: {
           snapshotDate,
-          isSlaBreach: true,
+          isTatBreach: true,
           claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
         },
       }),
@@ -81,11 +81,11 @@ export async function GET(_request: NextRequest) {
     if (prevDate) {
       const [breachedToday, breachedYesterday] = await Promise.all([
         prisma.claimSnapshot.findMany({
-          where: { snapshotDate, isSlaBreach: true },
+          where: { snapshotDate, isTatBreach: true },
           select: { claimId: true },
         }),
         prisma.claimSnapshot.findMany({
-          where: { snapshotDate: prevDate, isSlaBreach: true },
+          where: { snapshotDate: prevDate, isTatBreach: true },
           select: { claimId: true },
         }),
       ]);
@@ -96,7 +96,7 @@ export async function GET(_request: NextRequest) {
     // Value jumps and stagnant from delta flags
     const deltaSnapshots = await prisma.claimSnapshot.findMany({
       where: { snapshotDate, deltaFlags: { not: undefined } },
-      select: { deltaFlags: true, isSlaBreach: true },
+      select: { deltaFlags: true, isTatBreach: true },
     });
 
     let valueJumps = 0, stagnant = 0;
@@ -104,7 +104,7 @@ export async function GET(_request: NextRequest) {
       const flags = s.deltaFlags as Record<string, unknown> | null;
       if (!flags) continue;
       if (flags['value_jump_20pct']) valueJumps++;
-      if (s.isSlaBreach && !flags['secondary_status_change']) stagnant++;
+      if (s.isTatBreach && !flags['secondary_status_change']) stagnant++;
     }
 
     // Handler health via raw query for efficiency
@@ -134,7 +134,7 @@ export async function GET(_request: NextRequest) {
     }));
 
     return NextResponse.json({
-      alertCards: { slaBreaches, redFlags, bigClaimsOpen, unassignedWithPayment },
+      alertCards: { tatBreaches, redFlags, bigClaimsOpen, unassignedWithPayment },
       attention: {
         uploadDate: latestRun?.createdAt.toISOString() ?? null,
         readyToClose,

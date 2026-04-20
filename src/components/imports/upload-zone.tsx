@@ -6,7 +6,7 @@ import {
   FileSpreadsheet, CreditCard, TrendingUp, BarChart2,
   Download, Upload, CheckCircle2, X,
 } from 'lucide-react';
-import { IMPORT_TYPES, type ImportTypeConfig } from '@/app/(settings)/imports/constants';
+import { IMPORT_TYPES, type ImportTypeConfig } from '@/app/(imports)/imports/constants';
 
 type Step = 'upload' | 'preview' | 'validate' | 'importing' | 'results';
 
@@ -22,6 +22,9 @@ interface ImportResult {
   rowsErrored: number;
   error?: string;
   snapshotDate?: string;
+  importRunId?: string;
+  flagsComputed?: boolean;
+  flagComputationError?: string;
 }
 
 interface PreviewRow {
@@ -68,6 +71,7 @@ export function UploadZone() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [history, setHistory] = useState<Record<string, string | null>>({});
+  const [retryingFlags, setRetryingFlags] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -344,14 +348,6 @@ export function UploadZone() {
       } else {
         setResult(data as unknown as ImportResult);
         refreshHistory();
-        // Trigger flag computation asynchronously for claims imports (non-blocking)
-        if (activeConfig?.key === 'claims' && data.importRunId) {
-          fetch('/api/import/claims/flags', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ importRunId: data.importRunId }),
-          }).catch(() => {});
-        }
       }
     } catch (err) {
       clearInterval(progressInterval);
@@ -840,6 +836,39 @@ export function UploadZone() {
                           <p className="text-xs text-[#92400E]">
                             Note: {missingColumns.length} required column{missingColumns.length !== 1 ? 's were' : ' was'} missing from the file.
                           </p>
+                        </div>
+                      )}
+
+                      {result.flagComputationError && (
+                        <div className="mt-3 rounded-lg border border-[#F5A800]/30 bg-[#FEF3C7] px-3 py-2 flex items-center justify-between gap-3">
+                          <p className="text-xs text-[#92400E]">
+                            Import succeeded, but integrity flags failed to compute.
+                          </p>
+                          <button
+                            onClick={async () => {
+                              if (!result.importRunId) return;
+                              setRetryingFlags(true);
+                              try {
+                                const r = await fetch('/api/import/claims/flags', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ importRunId: result.importRunId }),
+                                });
+                                const d = await r.json();
+                                if (r.ok && d.success) {
+                                  setResult(prev => prev ? { ...prev, flagsComputed: true, flagComputationError: undefined } : prev);
+                                }
+                              } catch {
+                                // ignore
+                              } finally {
+                                setRetryingFlags(false);
+                              }
+                            }}
+                            disabled={retryingFlags}
+                            className="flex-shrink-0 px-3 py-1 rounded-lg text-xs font-semibold text-[#92400E] border border-[#F5A800] hover:bg-[#F5A800]/20 transition-colors disabled:opacity-50"
+                          >
+                            {retryingFlags ? 'Retrying…' : 'Retry'}
+                          </button>
                         </div>
                       )}
                     </>

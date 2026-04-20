@@ -57,11 +57,11 @@ export interface ClaimSnapshot {
   reserveUtilisationPct?: number | null;
   complexityWeight?: number | null;
   deltaFlags?: Record<string, boolean> | null;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   daysInCurrentStatus?: number | null;
 }
 
-export interface SlaConfig {
+export interface TatConfig {
   id: string;
   secondaryStatus: string;
   maxDays: number;

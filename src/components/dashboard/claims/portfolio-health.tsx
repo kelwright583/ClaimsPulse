@@ -69,7 +69,7 @@ interface PortfolioHealthData {
     daysOpen: number | null;
     totalIncurred: number | null;
     totalOs: number | null;
-    slaPosition: 'on-track' | 'at-risk' | 'breach';
+    tatPosition: 'on-track' | 'at-risk' | 'breach';
   }>;
 }
 
@@ -196,8 +196,8 @@ export function PortfolioHealth({ userId: _userId, filters }: SubViewProps) {
       header: 'Outstanding',
       cell: i => <span className="text-sm tabular-nums text-right block">{formatZAR(i.getValue())}</span>,
     }),
-    colHelper.accessor('slaPosition', {
-      header: 'SLA',
+    colHelper.accessor('tatPosition', {
+      header: 'TAT',
       cell: i => {
         const v = i.getValue();
         return (

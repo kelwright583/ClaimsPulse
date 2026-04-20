@@ -97,7 +97,7 @@ export const IMPORT_TYPES: ImportTypeConfig[] = [
       'Snapshot date is the upload date, not a date embedded in the file.',
     ],
     successMessage:
-      'Daily delta has been computed. SLA flags, claim velocity, and fraud signals have been updated.',
+      'Daily delta has been computed. TAT flags, claim velocity, and fraud signals have been updated.',
   },
   {
     key: 'payee',

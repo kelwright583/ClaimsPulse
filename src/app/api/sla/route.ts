@@ -38,10 +38,10 @@ export async function GET() {
 
     const [breaches, slaConfigs, activeDelays] = await Promise.all([
       prisma.claimSnapshot.findMany({
-        where: { snapshotDate, isSlaBreach: true },
+        where: { snapshotDate, isTatBreach: true },
         orderBy: [{ secondaryStatus: 'asc' }, { daysInCurrentStatus: 'desc' }],
       }),
-      prisma.slaConfig.findMany({ where: { isActive: true } }),
+      prisma.tatConfig.findMany({ where: { isActive: true } }),
       prisma.acknowledgedDelay.findMany({
         where: { isActive: true },
         select: { claimId: true, secondaryStatus: true, reasonType: true, expectedDate: true },

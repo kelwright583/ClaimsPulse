@@ -4,7 +4,7 @@ interface ClaimFiltersProps {
   search: string;
   handler: string;
   claimStatus: string;
-  isSlaBreach: string;
+  isTatBreach: string;
   handlers: string[];
   statuses: string[];
   onSearch: (v: string) => void;
@@ -18,7 +18,7 @@ export function ClaimFilters({
   search,
   handler,
   claimStatus,
-  isSlaBreach,
+  isTatBreach,
   handlers,
   statuses,
   onSearch,
@@ -27,7 +27,7 @@ export function ClaimFilters({
   onSlaBreach,
   onReset,
 }: ClaimFiltersProps) {
-  const hasActiveFilters = search || handler || claimStatus || isSlaBreach;
+  const hasActiveFilters = search || handler || claimStatus || isTatBreach;
 
   return (
     <div className="flex flex-wrap gap-3 items-center">
@@ -74,17 +74,17 @@ export function ClaimFilters({
         ))}
       </select>
 
-      {/* SLA Breach toggle */}
+      {/* TAT Breach toggle */}
       <button
-        onClick={() => onSlaBreach(isSlaBreach === 'true' ? '' : 'true')}
+        onClick={() => onSlaBreach(isTatBreach === 'true' ? '' : 'true')}
         className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors ${
-          isSlaBreach === 'true'
+          isTatBreach === 'true'
             ? 'bg-[#991B1B] border-[#991B1B] text-white'
             : 'bg-white border-[#E8EEF8] text-[#6B7280] hover:border-[#991B1B] hover:text-[#991B1B]'
         }`}
       >
-        <span className={`w-2 h-2 rounded-full ${isSlaBreach === 'true' ? 'bg-white' : 'bg-[#991B1B]'}`} />
-        SLA Breach
+        <span className={`w-2 h-2 rounded-full ${isTatBreach === 'true' ? 'bg-white' : 'bg-[#991B1B]'}`} />
+        TAT Breach
       </button>
 
       {/* Reset */}

@@ -42,8 +42,8 @@ export async function GET() {
       orderBy: { claimId: 'asc' },
     });
 
-    const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
-    const slaMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c]));
+    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
 
     const data = snapshots.map(s => {
       const sla = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;

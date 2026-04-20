@@ -16,12 +16,12 @@ export async function GET() {
     });
     const snapshotDate = latestSnap?.snapshotDate ?? null;
 
-    const [openCount, slaBreaches, partsBackorder, bigClaims, totalOs, recentFinalised] = snapshotDate
+    const [openCount, tatBreaches, partsBackorder, bigClaims, totalOs, recentFinalised] = snapshotDate
       ? await Promise.all([
           prisma.claimSnapshot.count({
             where: { snapshotDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } },
           }),
-          prisma.claimSnapshot.count({ where: { snapshotDate, isSlaBreach: true } }),
+          prisma.claimSnapshot.count({ where: { snapshotDate, isTatBreach: true } }),
           prisma.claimSnapshot.count({
             where: { snapshotDate, secondaryStatus: 'Vehicle repair - Parts on Back Order' },
           }),
@@ -44,7 +44,7 @@ export async function GET() {
       }),
     ]);
 
-    const [emailsRouted, tatBreaches, urgentPending] = await Promise.all([
+    const [emailsRouted, mailboxTatBreaches, urgentPending] = await Promise.all([
       prisma.emailRecord.count({ where: { receivedAt: { gte: yesterday } } }),
       prisma.emailRecord.count({
         where: { respondedTo: false, tatDeadline: { lt: new Date() } },
@@ -93,7 +93,7 @@ export async function GET() {
       snapshotDate: snapshotDate?.toISOString() ?? null,
       claims: {
         openCount,
-        slaBreaches,
+        tatBreaches,
         partsBackorder,
         bigClaims,
         totalOutstanding: Number((totalOs as { _sum: { totalOs?: number | null } })._sum?.totalOs ?? 0),
@@ -103,7 +103,7 @@ export async function GET() {
         count: recentPaymentCount,
         totalValue: Number(recentPaymentTotal._sum.grossPaidInclVat ?? 0),
       },
-      mailbox: { emailsRouted, tatBreaches, urgentPending },
+      mailbox: { emailsRouted, tatBreaches: mailboxTatBreaches, urgentPending },
       finance: { lossRatio },
       operations: {
         activeProjects,

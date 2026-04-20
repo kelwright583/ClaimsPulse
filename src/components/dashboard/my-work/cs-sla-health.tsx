@@ -206,10 +206,10 @@ export default function CsSlaHealth({
         )}
       </div>
 
-      {/* SLA breach analysis */}
+      {/* TAT breach analysis */}
       <div className="bg-white rounded-xl border border-[#E8EEF8] shadow-sm p-4">
         <h3 className="text-sm font-semibold text-[#0D2761] mb-3">
-          SLA breach analysis
+          TAT breach analysis
         </h3>
         {data?.slaBreachByStatus && data.slaBreachByStatus.length > 0 ? (
           <>
@@ -306,7 +306,7 @@ export default function CsSlaHealth({
               )}
           </>
         ) : (
-          <p className="text-sm text-[#6B7280]">No SLA breach data available.</p>
+          <p className="text-sm text-[#6B7280]">No TAT breach data available.</p>
         )}
       </div>
 

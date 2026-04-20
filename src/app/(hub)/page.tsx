@@ -21,7 +21,7 @@ export default async function HubPage() {
     {
       key: 'claims',
       label: 'Claims',
-      description: 'SLA watchlist, handler performance, workbenches',
+      description: 'TAT watchlist, handler performance, workbenches',
       href: '/claims',
       show: ['HEAD_OF_CLAIMS', 'TEAM_LEADER', 'CLAIMS_TECHNICIAN', 'TP_HANDLER', 'SALVAGE_HANDLER'].includes(role),
     },
@@ -61,11 +61,18 @@ export default async function HubPage() {
       show: hasPermission(role, 'canSeeStrategic'),
     },
     {
+      key: 'imports',
+      label: 'Imports',
+      description: 'Upload claims, payee, revenue, and movement reports',
+      href: '/imports',
+      show: hasPermission(role, 'canUploadReports'),
+    },
+    {
       key: 'settings',
-      label: 'Settings & Imports',
-      description: 'Import reports, SLA matrix, targets, user management',
-      href: '/settings',
-      show: hasPermission(role, 'canConfigureSla') || hasPermission(role, 'canUploadReports') || hasPermission(role, 'canManageUsers'),
+      label: 'Settings',
+      description: 'TAT matrix, targets, general config, user management',
+      href: '/settings/general',
+      show: hasPermission(role, 'canConfigureSla') || hasPermission(role, 'canManageUsers'),
     },
   ].filter(p => p.show);
 

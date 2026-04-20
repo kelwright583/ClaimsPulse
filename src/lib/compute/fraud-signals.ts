@@ -29,6 +29,9 @@ export async function computeFlags(importRunId: string, snapshotDate: Date): Pro
       insured: true,
       dateOfLoss: true,
       snapshotDate: true,
+      isTatBreach: true,
+      daysInCurrentStatus: true,
+      deltaFlags: true,
     },
   });
 
@@ -253,6 +256,33 @@ export async function computeFlags(importRunId: string, snapshotDate: Date): Pro
         flagType: 'NO_PAYMENT_30_DAYS',
         severity: 'warning',
         detail: { daysOpen, claimStatus: s.claimStatus },
+      });
+    }
+  }
+
+  // 12. REOPENED: deltaFlags contains "reopened": true
+  for (const s of snapshots) {
+    const delta = s.deltaFlags as Record<string, unknown> | null;
+    if (delta && delta['reopened'] === true) {
+      flags.push({
+        importRunId,
+        claimId: s.claimId,
+        flagType: 'REOPENED',
+        severity: 'warning',
+        detail: { previousStatus: delta['previousStatus'] ?? null, currentStatus: s.claimStatus },
+      });
+    }
+  }
+
+  // 13. TAT_BREACH: isTatBreach === true
+  for (const s of snapshots) {
+    if (s.isTatBreach === true) {
+      flags.push({
+        importRunId,
+        claimId: s.claimId,
+        flagType: 'TAT_BREACH',
+        severity: 'alert',
+        detail: { secondaryStatus: s.secondaryStatus, daysInCurrentStatus: s.daysInCurrentStatus },
       });
     }
   }

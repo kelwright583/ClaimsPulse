@@ -51,7 +51,7 @@ export async function GET() {
             _count: { id: true },
           }).then(async total => {
             const breached = await prisma.claimSnapshot.count({
-              where: { snapshotDate: latestSnapshot, isSlaBreach: true },
+              where: { snapshotDate: latestSnapshot, isTatBreach: true },
             });
             return { total: total._count.id, breached };
           })
@@ -98,7 +98,7 @@ export async function GET() {
     const reservePosition = netOutstandingRec ? Number(netOutstandingRec.value) : null;
 
     // SLA compliance
-    const slaCompliance =
+    const tatCompliance =
       slaClaimsData.total > 0
         ? ((slaClaimsData.total - slaClaimsData.breached) / slaClaimsData.total) * 100
         : null;
@@ -152,7 +152,7 @@ export async function GET() {
     return Response.json({
       lossRatio,
       openClaims,
-      slaCompliance,
+      tatCompliance,
       gwpVsTarget,
       mailboxTatCompliance,
       bigClaimsCount,

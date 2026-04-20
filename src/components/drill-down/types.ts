@@ -37,7 +37,7 @@ export interface DrillDownClaim {
   totalIncurred: number | null;
   totalRecovery: number | null;
   totalSalvage: number | null;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   // Delta-specific
   prevStatus?: string | null;
   prevValue?: number | null;
@@ -81,7 +81,7 @@ export interface DrillDownSummary {
   avgPayment?: number;
   largestPayment?: number;
   avgDaysToFinalise?: number;
-  slaBreachCount?: number;
+  tatBreachCount?: number;
 }
 
 export interface DrillDownResponse {

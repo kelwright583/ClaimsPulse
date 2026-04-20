@@ -11,7 +11,7 @@ interface SnapshotData {
   snapshotDate: string | null;
   claims: {
     openCount: number;
-    slaBreaches: number;
+    tatBreaches: number;
     partsBackorder: number;
     bigClaims: number;
     totalOutstanding: number;
@@ -114,7 +114,7 @@ export function SnapshotClient({ role: _role }: { role: UserRole }) {
             <h2 className="text-xs font-semibold uppercase tracking-widest text-[#6B7280] mb-3">Claims health</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <StatCard label="Open claims" value={data.claims.openCount} />
-              <StatCard label="SLA breaches" value={data.claims.slaBreaches} variant={data.claims.slaBreaches > 0 ? 'danger' : 'default'} />
+              <StatCard label="TAT breaches" value={data.claims.tatBreaches} variant={data.claims.tatBreaches > 0 ? 'danger' : 'default'} />
               <StatCard label="Parts backorder" value={data.claims.partsBackorder} variant={data.claims.partsBackorder > 0 ? 'warning' : 'default'} />
               <StatCard label="Big claims (R250k+)" value={data.claims.bigClaims} />
               <StatCard label="Total outstanding" value={fmt(data.claims.totalOutstanding)} />

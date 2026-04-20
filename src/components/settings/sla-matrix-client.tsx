@@ -86,7 +86,7 @@ export function SlaMatrixClient() {
   }
 
   async function handleReset() {
-    if (!confirm('Reset all SLA thresholds to default values? This cannot be undone.')) return;
+    if (!confirm('Reset all TAT thresholds to default values? This cannot be undone.')) return;
     setResetting(true);
     try {
       const res = await fetch('/api/sla-config', {
@@ -109,7 +109,7 @@ export function SlaMatrixClient() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <p className="text-sm text-[#6B7280]">Loading SLA configuration…</p>
+        <p className="text-sm text-[#6B7280]">Loading TAT configuration…</p>
       </div>
     );
   }
@@ -133,10 +133,10 @@ export function SlaMatrixClient() {
 
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-[#0D2761]">SLA Matrix</h1>
+          <h1 className="text-2xl font-semibold text-[#0D2761]">Claims TAT Matrix</h1>
           <p className="text-sm text-[#6B7280] mt-1">
             Configure maximum days per secondary claim status.
-            Changes apply to all future SLA breach calculations.
+            Changes apply to all future TAT breach calculations.
           </p>
         </div>
         <button

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { formatZAR, formatDate } from '@/lib/utils';
 
 interface EnrichedFlag {
@@ -25,6 +25,8 @@ interface IntegrityData {
   summary: Record<string, number>;
   totals: { alert: number; warning: number; total: number };
   snapshotDate: string | null;
+  pipelineStatus?: 'ok' | 'no_imports' | 'no_flags_for_latest';
+  importRunId?: string;
 }
 
 const FLAG_TYPE_LABELS: Record<string, string> = {
@@ -39,7 +41,7 @@ const FLAG_TYPE_LABELS: Record<string, string> = {
   VALUE_CREEP: 'Value Creep',
   REOPENED: 'Reopened',
   UNASSIGNED: 'Unassigned',
-  SLA_BREACH: 'SLA Breach',
+  TAT_BREACH: 'TAT Breach',
   NO_PAYMENT_30_DAYS: 'No Payment 30d',
 };
 
@@ -79,14 +81,18 @@ export function IntegrityClient() {
   const [loading, setLoading] = useState(true);
   const [severityFilter, setSeverityFilter] = useState<'all' | 'alert' | 'warning'>('all');
   const [flagTypeFilter, setFlagTypeFilter] = useState<string>('all');
+  const [retryingFlags, setRetryingFlags] = useState(false);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
+    setLoading(true);
     fetch('/api/integrity')
       .then(r => r.json())
       .then((d: IntegrityData) => setData(d))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) {
     return (
@@ -100,6 +106,47 @@ export function IntegrityClient() {
     return (
       <div className="bg-white border border-[#E8EEF8] rounded-xl p-8 text-center">
         <p className="text-sm text-[#0D2761]/60">Failed to load integrity data.</p>
+      </div>
+    );
+  }
+
+  if (data.pipelineStatus === 'no_imports') {
+    return (
+      <div className="bg-white border border-[#E8EEF8] rounded-xl p-8 text-center">
+        <p className="text-sm font-medium text-[#0D2761]">No imports yet — run a claims import</p>
+        <p className="text-xs text-[#0D2761]/50 mt-1">Upload a claims report in the Imports section to compute fraud signals.</p>
+      </div>
+    );
+  }
+
+  if (data.pipelineStatus === 'no_flags_for_latest') {
+    return (
+      <div className="bg-white border border-[#E8EEF8] rounded-xl p-8 text-center">
+        <p className="text-sm font-medium text-[#0D2761]">No flags for the latest import</p>
+        <p className="text-xs text-[#0D2761]/50 mt-1 mb-4">Integrity flags have not been computed for the most recent import run.</p>
+        <button
+          onClick={async () => {
+            if (!data.importRunId) return;
+            setRetryingFlags(true);
+            try {
+              const r = await fetch('/api/import/claims/flags', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ importRunId: data.importRunId }),
+              });
+              if (r.ok) { loadData(); }
+            } catch {
+              // ignore
+            } finally {
+              setRetryingFlags(false);
+            }
+          }}
+          disabled={retryingFlags}
+          className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+          style={{ backgroundColor: '#0D2761' }}
+        >
+          {retryingFlags ? 'Computing…' : 'Compute flags now'}
+        </button>
       </div>
     );
   }

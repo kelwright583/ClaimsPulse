@@ -25,8 +25,8 @@ export async function GET() {
     {
       id: 'sla-breach-summary',
       category: 'Claims',
-      title: 'SLA Breach Summary',
-      description: 'All currently open SLA breaches grouped by handler and secondary status.',
+      title: 'TAT Breach Summary',
+      description: 'All currently open TAT breaches grouped by handler and secondary status.',
       endpoint: '/api/reports/sla-breach-summary',
       format: 'csv',
       lastDataDate: latestImport?.createdAt ?? null,

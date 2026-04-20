@@ -16,7 +16,7 @@ export async function GET() {
         totalOpenClaims: 0,
         totalIncurred: 0,
         totalOutstanding: 0,
-        slaBreachCount: 0,
+        tatBreachCount: 0,
         bigClaimsCount: 0,
         deltaStats: { newClaims: 0, statusChanges: 0, valueJumps: 0, finalised: 0 },
         handlerScorecard: [],
@@ -30,7 +30,7 @@ export async function GET() {
     // All snapshots for the latest date (excluding finalised/repudiated/cancelled)
     const openStatuses = ['Finalised', 'Repudiated', 'Cancelled'];
 
-    const [allSnapshots, slaBreaches, latestRun] = await Promise.all([
+    const [allSnapshots, tatBreaches, latestRun] = await Promise.all([
       prisma.claimSnapshot.findMany({
         where: {
           snapshotDate,
@@ -45,7 +45,7 @@ export async function GET() {
           totalIncurred: true,
           totalOs: true,
           daysInCurrentStatus: true,
-          isSlaBreach: true,
+          isTatBreach: true,
           reserveUtilisationPct: true,
           deltaFlags: true,
           insured: true,
@@ -53,7 +53,7 @@ export async function GET() {
         },
       }),
       prisma.claimSnapshot.count({
-        where: { snapshotDate, isSlaBreach: true },
+        where: { snapshotDate, isTatBreach: true },
       }),
       prisma.importRun.findFirst({
         where: { reportType: 'CLAIMS_OUTSTANDING' },
@@ -68,7 +68,7 @@ export async function GET() {
     const handlerMap = new Map<string, {
       openClaims: number;
       totalOs: number;
-      slaBreaches: number;
+      tatBreaches: number;
       finalisedThisMonth: number;
     }>();
 
@@ -99,12 +99,12 @@ export async function GET() {
       // Handler scorecard
       const handler = s.handler ?? 'Unassigned';
       if (!handlerMap.has(handler)) {
-        handlerMap.set(handler, { openClaims: 0, totalOs: 0, slaBreaches: 0, finalisedThisMonth: 0 });
+        handlerMap.set(handler, { openClaims: 0, totalOs: 0, tatBreaches: 0, finalisedThisMonth: 0 });
       }
       const hData = handlerMap.get(handler)!;
       hData.openClaims++;
       hData.totalOs += os;
-      if (s.isSlaBreach) hData.slaBreaches++;
+      if (s.isTatBreach) hData.tatBreaches++;
 
       // Big claims
       const causeLower = (s.cause ?? '').toLowerCase();
@@ -156,7 +156,7 @@ export async function GET() {
       handler,
       openClaims: stats.openClaims,
       avgOutstanding: stats.openClaims > 0 ? stats.totalOs / stats.openClaims : 0,
-      slaBreaches: stats.slaBreaches,
+      tatBreaches: stats.tatBreaches,
       finalisedThisMonth: stats.finalisedThisMonth,
     })).sort((a, b) => b.openClaims - a.openClaims);
 
@@ -167,7 +167,7 @@ export async function GET() {
       totalOpenClaims: allSnapshots.length,
       totalIncurred,
       totalOutstanding,
-      slaBreachCount: slaBreaches,
+      tatBreachCount: tatBreaches,
       bigClaimsCount,
       deltaStats: {
         newClaims: newClaims.count,

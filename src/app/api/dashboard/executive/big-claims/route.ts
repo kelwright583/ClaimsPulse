@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
           totalOs: true,
           totalPaid: true,
           daysInCurrentStatus: true,
-          isSlaBreach: true,
+          isTatBreach: true,
           lossArea: true,
         },
       }),
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       totalOs: r.totalOs ? Number(r.totalOs) : null,
       totalPaid: r.totalPaid ? Number(r.totalPaid) : null,
       daysOpen: r.daysInCurrentStatus,
-      isSlaBreach: r.isSlaBreach,
+      isTatBreach: r.isTatBreach,
       lossArea: r.lossArea,
     }));
 

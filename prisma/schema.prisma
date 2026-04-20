@@ -55,6 +55,14 @@ model ImportRun {
 
   uploader Profile? @relation(fields: [uploadedBy], references: [id])
 
+  snapshots          ClaimSnapshot[]
+  flags              ClaimFlag[]
+  payments           Payment[]
+  premiumRecords     PremiumRecord[]
+  financialSummaries FinancialSummary[]
+  policyCounts       PolicyCount[]
+  uwSnapshots        UwSnapshot[]
+
   @@index([reportType])
   @@index([createdAt])
   @@map("import_runs")
@@ -151,9 +159,11 @@ model ClaimSnapshot {
   reserveUtilisationPct Decimal? @map("reserve_utilisation_pct") @db.Decimal(8, 2)
   complexityWeight      Int?     @map("complexity_weight")
   deltaFlags            Json?    @map("delta_flags")
-  isSlaBreach           Boolean  @default(false) @map("is_sla_breach")
+  isTatBreach           Boolean  @default(false) @map("is_tat_breach")
   daysInCurrentStatus   Int?     @map("days_in_current_status")
   daysOpen              Int?     @map("days_open")
+
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
 
   @@unique([claimId, snapshotDate])
   @@index([claimId])
@@ -163,7 +173,7 @@ model ClaimSnapshot {
   @@index([secondaryStatus])
   @@index([cause])
   @@index([broker])
-  @@index([isSlaBreach])
+  @@index([isTatBreach])
   @@index([importRunId])
   @@map("claim_snapshots")
 }
@@ -198,6 +208,8 @@ model Payment {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
+
   @@index([claimId])
   @@index([payeeVatNr])
   @@index([requestedBy])
@@ -231,6 +243,8 @@ model PremiumRecord {
   currency        String?  @default("ZAR")
   createdAt       DateTime @default(now()) @map("created_at")
 
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
+
   @@index([periodDate])
   @@index([broker])
   @@index([className])
@@ -251,15 +265,17 @@ model FinancialSummary {
   value       Decimal  @db.Decimal(18, 2)
   createdAt   DateTime @default(now()) @map("created_at")
 
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
+
   @@unique([periodDate, section, level, metric])
   @@index([periodDate])
   @@index([section])
   @@map("financial_summaries")
 }
 
-// ── SLA Configuration ─────────────────────────────────────────────────────────
+// ── TAT Configuration ─────────────────────────────────────────────────────────
 
-model SlaConfig {
+model TatConfig {
   id              String   @id @default(uuid()) @db.Uuid
   secondaryStatus String   @unique @map("secondary_status")
   maxDays         Int      @map("max_days")
@@ -270,7 +286,7 @@ model SlaConfig {
   updatedAt       DateTime @updatedAt @map("updated_at")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  @@map("sla_config")
+  @@map("tat_config")
 }
 
 // ── Acknowledged Delays ───────────────────────────────────────────────────────
@@ -308,6 +324,8 @@ model ClaimFlag {
   detail      Json?
   createdAt   DateTime @default(now()) @map("created_at")
 
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
+
   @@index([claimId])
   @@index([flagType])
   @@index([importRunId])
@@ -326,7 +344,7 @@ enum FlagType {
   VALUE_CREEP
   REOPENED
   UNASSIGNED
-  SLA_BREACH
+  TAT_BREACH
   NO_PAYMENT_30_DAYS
 
   @@map("flag_type")
@@ -349,6 +367,54 @@ model ClaimAction {
   @@index([actionType])
   @@index([isComplete])
   @@map("claim_actions")
+}
+
+// ── Handler Targets ───────────────────────────────────────────────────────────
+
+model HandlerTarget {
+  id           String   @id @default(uuid()) @db.Uuid
+  handler      String
+  metricType   String   @map("metric_type")
+  targetValue  Decimal  @map("target_value") @db.Decimal(18, 4)
+  setBy        String?  @map("set_by") @db.Uuid
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([handler, metricType])
+  @@index([handler])
+  @@index([metricType])
+  @@map("handler_targets")
+}
+
+model TargetMetricConfig {
+  id          String   @id @default(uuid()) @db.Uuid
+  metricType  String   @unique @map("metric_type")
+  label       String
+  unit        String
+  cadence     String
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("target_metric_config")
+}
+
+// ── Generated Reports ─────────────────────────────────────────────────────────
+
+model GeneratedReport {
+  id           String   @id @default(uuid()) @db.Uuid
+  reportType   String   @map("report_type")
+  title        String
+  parameters   Json
+  format       String
+  fileUrl      String?  @map("file_url")
+  generatedBy  String   @map("generated_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([generatedBy])
+  @@index([createdAt])
+  @@map("generated_reports")
 }
 
 // ── Targets ───────────────────────────────────────────────────────────────────
@@ -382,6 +448,8 @@ model PolicyCount {
   netMovement   Int?     @map("net_movement")
   isApproximate Boolean  @default(false) @map("is_approximate")
   createdAt     DateTime @default(now()) @map("created_at")
+
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
 
   @@unique([periodDate, productLine])
   @@map("policy_counts")
@@ -520,6 +588,8 @@ model UwSnapshot {
   renewals    Int?
   lapses      Int?
   createdAt   DateTime  @default(now()) @map("created_at")
+
+  importRun ImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
 
   @@index([periodDate])
   @@index([productLine])

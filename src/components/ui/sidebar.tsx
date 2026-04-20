@@ -97,7 +97,7 @@ export function Sidebar({ role, fullName, email }: SidebarProps) {
       items: [
         { label: 'Dashboard',     href: '/dashboard',           Icon: LayoutGrid,   show: true },
         { label: 'Claims',        href: '/claims',              Icon: FileText,     show: perms.canSeeAllClaims || role === 'CLAIMS_TECHNICIAN' },
-        { label: 'SLA Watchlist', href: '/sla',                 Icon: Clock,        show: true },
+        { label: 'TAT Watchlist', href: '/tat',                 Icon: Clock,        show: true },
         { label: 'Delta',         href: '/delta',               Icon: ArrowLeftRight, show: perms.canSeeAllClaims },
         { label: 'Productivity',  href: '/productivity',        Icon: TrendingUp,   show: perms.canSeeTeamProductivity },
         { label: 'Integrity',     href: '/integrity',           Icon: ShieldAlert,  show: perms.canSeeIntegrity },

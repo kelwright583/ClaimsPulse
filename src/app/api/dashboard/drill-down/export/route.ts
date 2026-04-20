@@ -33,7 +33,7 @@ function buildBaseWhere(
 
   switch (type) {
     case 'sla_breaches':
-      base.isSlaBreach = true;
+      base.isTatBreach = true;
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
       break;
     case 'big_claims':
@@ -105,12 +105,12 @@ async function toXlsx(
 
 function titleForType(type: string): string {
   const map: Record<string, string> = {
-    sla_breaches: 'SLA Breaches',
+    sla_breaches: 'TAT Breaches',
     red_flags: 'Red Flags',
     big_claims: 'Big Claims Open',
     unassigned_payment: 'Unassigned + Payment',
     ready_to_close: 'Ready to Close',
-    newly_breached: 'Newly Breached SLA',
+    newly_breached: 'Newly Breached TAT',
     value_jumps: 'Value Jumps',
     stagnant: 'Stagnant Claims',
     handler: 'Handler Portfolio',
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
         cause: true, lossArea: true, insured: true, broker: true,
         dateOfLoss: true, daysInCurrentStatus: true, daysOpen: true,
         intimatedAmount: true, totalPaid: true, totalOs: true, totalIncurred: true,
-        totalRecovery: true, totalSalvage: true, isSlaBreach: true,
+        totalRecovery: true, totalSalvage: true, isTatBreach: true,
         ownDamagePaid: true, thirdPartyPaid: true, expensesPaid: true,
         legalCostsPaid: true, assessorFeesPaid: true, towingPaid: true,
       },
@@ -194,7 +194,7 @@ export async function GET(request: NextRequest) {
       'Total incurred': fmtR(n(r.totalIncurred)),
       'Total recovery': fmtR(n(r.totalRecovery)),
       'Total salvage': fmtR(n(r.totalSalvage)),
-      'SLA breach': r.isSlaBreach ? 'Yes' : 'No',
+      'TAT breach': r.isTatBreach ? 'Yes' : 'No',
       'Own damage paid': fmtR(n(r.ownDamagePaid)),
       'Third party paid': fmtR(n(r.thirdPartyPaid)),
       'Expenses paid': fmtR(n(r.expensesPaid)),

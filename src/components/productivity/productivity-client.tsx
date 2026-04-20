@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { formatZAR, formatDate } from '@/lib/utils';
 import type { HandlerMetrics, PortfolioCategory } from '@/lib/compute/productivity';
+import { TargetAchievementView } from './target-achievement-view';
 
 interface AssessorClaim {
   claimId: string;
@@ -211,7 +212,7 @@ function HandlerCard({ metrics }: { metrics: HandlerMetrics }) {
 export function ProductivityClient() {
   const [data, setData] = useState<ProductivityData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'scorecards' | 'table' | 'assessors'>('scorecards');
+  const [view, setView] = useState<'scorecards' | 'table' | 'assessors' | 'targets'>('scorecards');
   const [sortCol, setSortCol] = useState<keyof HandlerMetrics>('complexityScore');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -284,6 +285,7 @@ export function ProductivityClient() {
           ['scorecards', 'Handler Scorecards'],
           ['table', 'Team Table'],
           ['assessors', `Assessor Pipeline (${data.assessorPipeline.length})`],
+          ['targets', 'Targets'],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -389,6 +391,9 @@ export function ProductivityClient() {
           </div>
         </div>
       )}
+
+      {/* Targets view */}
+      {view === 'targets' && <TargetAchievementView />}
 
       {/* Assessor pipeline */}
       {view === 'assessors' && (

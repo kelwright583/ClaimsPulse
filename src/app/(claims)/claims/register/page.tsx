@@ -13,7 +13,7 @@ interface ClaimRow {
   cause: string | null;
   claimStatus: string | null;
   secondaryStatus: string | null;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   daysInCurrentStatus: number | null;
   totalIncurred: number | null;
   totalOs: number | null;
@@ -48,8 +48,8 @@ async function getInitialData(role: string, fullName: string | null | undefined)
       }),
     ]);
 
-    const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
-    const slaMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c]));
+    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
 
     const data: ClaimRow[] = snapshots.map(s => {
       const sla = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;
@@ -61,7 +61,7 @@ async function getInitialData(role: string, fullName: string | null | undefined)
         cause: s.cause,
         claimStatus: s.claimStatus,
         secondaryStatus: s.secondaryStatus,
-        isSlaBreach: s.isSlaBreach,
+        isTatBreach: s.isTatBreach,
         daysInCurrentStatus: s.daysInCurrentStatus,
         totalIncurred: s.totalIncurred !== null ? Number(s.totalIncurred) : null,
         totalOs: s.totalOs !== null ? Number(s.totalOs) : null,

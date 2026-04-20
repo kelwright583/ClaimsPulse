@@ -219,20 +219,20 @@ export async function GET(request: NextRequest) {
         daysInCurrentStatus: true,
         totalIncurred: true,
         totalOs: true,
-        isSlaBreach: true,
+        isTatBreach: true,
       },
     });
 
-    const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
-    const slaMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c]));
+    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
 
     const claims = claimsRaw.map(r => {
-      const slaConfig = r.secondaryStatus ? slaMap.get(r.secondaryStatus) : null;
-      let slaPosition: 'on-track' | 'at-risk' | 'breach' = 'on-track';
-      if (r.isSlaBreach) {
-        slaPosition = 'breach';
-      } else if (slaConfig && r.daysInCurrentStatus && r.daysInCurrentStatus > slaConfig.maxDays * 0.8) {
-        slaPosition = 'at-risk';
+      const tatConfig = r.secondaryStatus ? slaMap.get(r.secondaryStatus) : null;
+      let tatPosition: 'on-track' | 'at-risk' | 'breach' = 'on-track';
+      if (r.isTatBreach) {
+        tatPosition = 'breach';
+      } else if (tatConfig && r.daysInCurrentStatus && r.daysInCurrentStatus > tatConfig.maxDays * 0.8) {
+        tatPosition = 'at-risk';
       }
       return {
         claimId: r.claimId,
@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
         daysOpen: r.daysInCurrentStatus,
         totalIncurred: r.totalIncurred ? Number(r.totalIncurred) : null,
         totalOs: r.totalOs ? Number(r.totalOs) : null,
-        slaPosition,
+        tatPosition,
       };
     });
 

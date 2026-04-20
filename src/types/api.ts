@@ -26,7 +26,7 @@ export interface ClaimsQuery {
   secondaryStatus?: string;
   cause?: string;
   broker?: string;
-  isSlaBreach?: boolean;
+  isTatBreach?: boolean;
   snapshotDate?: string;
   page?: number;
   pageSize?: number;

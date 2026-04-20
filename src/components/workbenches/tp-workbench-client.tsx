@@ -12,7 +12,7 @@ interface TpClaim {
   cause: string | null;
   claimStatus: string | null;
   daysInCurrentStatus: number;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   thirdPartyOs: number;
   thirdPartyPaid: number;
   tpLiabilityOs: number;
@@ -155,7 +155,7 @@ export function TpWorkbenchClient() {
                     {label}<SortIcon col={col} />
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide whitespace-nowrap">SLA</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide whitespace-nowrap">TAT</th>
               </tr>
             </thead>
             <tbody>
@@ -191,7 +191,7 @@ export function TpWorkbenchClient() {
                     <td className="px-4 py-3 tabular-nums text-[#6B7280]">{formatZAR(c.thirdPartyPaid + c.tpLiabilityPaid, 0)}</td>
                     <td className="px-4 py-3 tabular-nums text-[#065F46]">{formatZAR(c.totalRecovery, 0)}</td>
                     <td className="px-4 py-3">
-                      {c.isSlaBreach && (
+                      {c.isTatBreach && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#991B1B]/10 text-[#991B1B]">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#991B1B] animate-pulse" />
                           Breach

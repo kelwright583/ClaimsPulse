@@ -7,32 +7,64 @@ export async function GET() {
   try {
     await requireAuth();
 
-    // Get latest snapshot date
-    const latest = await prisma.$queryRaw<{ max: Date | null }[]>`
-      SELECT MAX(snapshot_date) as max FROM claim_snapshots
-    `;
-    const maxDate = latest[0]?.max;
-
-    // Get all flags from the latest import run
+    // Get latest CLAIMS_OUTSTANDING import run
     const latestImport = await prisma.importRun.findFirst({
       where: { reportType: 'CLAIMS_OUTSTANDING' },
       orderBy: { createdAt: 'desc' },
     });
 
-    const flags = latestImport
-      ? await prisma.claimFlag.findMany({
-          where: { importRunId: latestImport.id },
-          orderBy: { createdAt: 'desc' },
-        })
-      : [];
+    if (!latestImport) {
+      return Response.json({
+        flags: [],
+        summary: {},
+        totals: { alert: 0, warning: 0, total: 0 },
+        snapshotDate: null,
+        pipelineStatus: 'no_imports',
+      });
+    }
+
+    // Use periodStart of the latest import as the canonical snapshot date.
+    // Fall back to the most common snapshotDate among snapshots with this importRunId.
+    let snapshotDate: Date | null = latestImport.periodStart ?? null;
+
+    if (!snapshotDate) {
+      const result = await prisma.$queryRaw<{ snapshot_date: Date; cnt: bigint }[]>`
+        SELECT snapshot_date, COUNT(*) AS cnt
+        FROM claim_snapshots
+        WHERE import_run_id = ${latestImport.id}::uuid
+        GROUP BY snapshot_date
+        ORDER BY cnt DESC
+        LIMIT 1
+      `;
+      snapshotDate = result[0]?.snapshot_date ?? null;
+    }
+
+    // Get all flags from the latest import run
+    const flags = await prisma.claimFlag.findMany({
+      where: { importRunId: latestImport.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (flags.length === 0) {
+      return Response.json({
+        flags: [],
+        summary: {},
+        totals: { alert: 0, warning: 0, total: 0 },
+        snapshotDate: snapshotDate
+          ? (snapshotDate instanceof Date ? snapshotDate : new Date(snapshotDate)).toISOString().split('T')[0]
+          : null,
+        pipelineStatus: 'no_flags_for_latest',
+        importRunId: latestImport.id,
+      });
+    }
 
     // Get claim details for flagged claims
     const claimIds = [...new Set(flags.map(f => f.claimId))];
-    const claims = maxDate && claimIds.length > 0
+    const claims = snapshotDate && claimIds.length > 0
       ? await prisma.claimSnapshot.findMany({
           where: {
             claimId: { in: claimIds },
-            snapshotDate: maxDate instanceof Date ? maxDate : new Date(maxDate),
+            snapshotDate: snapshotDate instanceof Date ? snapshotDate : new Date(snapshotDate),
           },
           select: {
             claimId: true,
@@ -75,13 +107,14 @@ export async function GET() {
     const alertCount = flags.filter(f => f.severity === 'alert').length;
     const warningCount = flags.filter(f => f.severity === 'warning').length;
 
+    const resolvedDate = snapshotDate instanceof Date ? snapshotDate : snapshotDate ? new Date(snapshotDate) : null;
+
     return Response.json({
       flags: enrichedFlags,
       summary,
       totals: { alert: alertCount, warning: warningCount, total: flags.length },
-      snapshotDate: maxDate
-        ? (maxDate instanceof Date ? maxDate : new Date(maxDate)).toISOString().split('T')[0]
-        : null,
+      snapshotDate: resolvedDate ? resolvedDate.toISOString().split('T')[0] : null,
+      pipelineStatus: 'ok',
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal error';

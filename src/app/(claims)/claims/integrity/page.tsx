@@ -6,6 +6,6 @@ import { IntegrityClient } from '@/components/integrity/integrity-client';
 export default async function IntegrityPage() {
   const ctx = await getSessionContext();
   if (!ctx) redirect('/login');
-  if (!hasPermission(ctx.role, 'canSeeIntegrity')) redirect('/dashboard');
+  if (!hasPermission(ctx.role, 'canSeeIntegrity')) redirect('/claims');
   return <IntegrityClient />;
 }

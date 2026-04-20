@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     let handler = searchParams.get('handler');
     const status = searchParams.get('status');
     const cause = searchParams.get('cause');
-    const slaPosition = searchParams.get('slaPosition');
+    const tatPosition = searchParams.get('tatPosition');
 
     // CLAIMS_TECHNICIAN: force to own name
     if (ctx.role === 'CLAIMS_TECHNICIAN') {
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const latestDate = await getLatestSnapshotDate();
     if (!latestDate) {
       return NextResponse.json({
-        stats: { openClaims: 0, totalOutstanding: 0, slaBreaches: 0, activeDelays: 0 },
+        stats: { openClaims: 0, totalOutstanding: 0, tatBreaches: 0, activeDelays: 0 },
         claims: [],
       });
     }
@@ -44,12 +44,12 @@ export async function GET(request: NextRequest) {
     if (handler) where.handler = handler;
     if (status) where.claimStatus = status;
     if (cause) where.cause = { contains: cause, mode: 'insensitive' };
-    if (slaPosition === 'breach') where.isSlaBreach = true;
+    if (tatPosition === 'breach') where.isTatBreach = true;
 
-    const [openCount, aggregateResult, slaBreachCount] = await Promise.all([
+    const [openCount, aggregateResult, tatBreachCount] = await Promise.all([
       prisma.claimSnapshot.count({ where }),
       prisma.claimSnapshot.aggregate({ where, _sum: { totalOs: true } }),
-      prisma.claimSnapshot.count({ where: { ...where, isSlaBreach: true } }),
+      prisma.claimSnapshot.count({ where: { ...where, isTatBreach: true } }),
     ]);
 
     // Fetch claims for the portfolio
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
         daysOpen: true,
         totalIncurred: true,
         totalOs: true,
-        isSlaBreach: true,
+        isTatBreach: true,
       },
     });
 
@@ -86,17 +86,17 @@ export async function GET(request: NextRequest) {
 
     const activeDelaySet = new Set(activeDelayRecords.map(d => d.claimId));
 
-    // SLA configs for slaPosition computation
-    const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
-    const slaMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c]));
+    // SLA configs for tatPosition computation
+    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
 
     const claims = claimsRaw
       .map(r => {
-        const slaConfig = r.secondaryStatus ? slaMap.get(r.secondaryStatus) : null;
+        const tatConfig = r.secondaryStatus ? slaMap.get(r.secondaryStatus) : null;
         let slaPos: 'on-track' | 'at-risk' | 'breach' = 'on-track';
-        if (r.isSlaBreach) {
+        if (r.isTatBreach) {
           slaPos = 'breach';
-        } else if (slaConfig && r.daysInCurrentStatus && r.daysInCurrentStatus > slaConfig.maxDays * 0.8) {
+        } else if (tatConfig && r.daysInCurrentStatus && r.daysInCurrentStatus > tatConfig.maxDays * 0.8) {
           slaPos = 'at-risk';
         }
         return {
@@ -107,20 +107,20 @@ export async function GET(request: NextRequest) {
           daysOpen: r.daysOpen ?? r.daysInCurrentStatus,
           totalIncurred: r.totalIncurred ? Number(r.totalIncurred) : null,
           totalOs: r.totalOs ? Number(r.totalOs) : null,
-          slaPosition: slaPos,
+          tatPosition: slaPos,
           hasActiveDelay: activeDelaySet.has(r.claimId),
         };
       })
       .filter(r => {
-        if (!slaPosition || slaPosition === 'breach') return true;
-        return r.slaPosition === slaPosition;
+        if (!tatPosition || tatPosition === 'breach') return true;
+        return r.tatPosition === tatPosition;
       });
 
     return NextResponse.json({
       stats: {
         openClaims: openCount,
         totalOutstanding: aggregateResult._sum.totalOs ? Number(aggregateResult._sum.totalOs) : 0,
-        slaBreaches: slaBreachCount,
+        tatBreaches: tatBreachCount,
         activeDelays: activeDelaysCount,
       },
       claims,

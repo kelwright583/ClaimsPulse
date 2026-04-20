@@ -183,12 +183,12 @@ export function FilterBar({ filters, activeFilters, onChange, onClear }: FilterB
           onChange={v => onChange('area', v)}
         />
       )}
-      {activeFilters.includes('slaPosition') && (
+      {activeFilters.includes('tatPosition') && (
         <FilterSelect
-          label="SLA"
-          value={filters.slaPosition}
+          label="TAT Position"
+          value={filters.tatPosition}
           options={SLA_POSITION_OPTIONS}
-          onChange={v => onChange('slaPosition', v)}
+          onChange={v => onChange('tatPosition', v)}
         />
       )}
       {activeFilters.includes('actionType') && (

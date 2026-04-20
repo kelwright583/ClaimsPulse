@@ -22,7 +22,7 @@ interface HandlerPerformanceData {
     finalisationGlass: number | null;
     finalisationComplex: number | null;
     paymentRate: number | null;
-    slaCompliance: number | null;
+    tatCompliance: number | null;
     csScore: number | null;
     breachCount: number;
     acknowledgedDelayCount: number;
@@ -117,10 +117,10 @@ function HandlerCard({ card }: { card: Scorecard }) {
           </span>
         </p>
 
-        {card.slaCompliance !== null && (
+        {card.tatCompliance !== null && (
           <p className="text-xs text-[#6B7280]">
-            SLA compliance:{' '}
-            <span className="font-semibold text-[#0D2761]">{card.slaCompliance}% within SLA</span>
+            TAT compliance:{' '}
+            <span className="font-semibold text-[#0D2761]">{card.tatCompliance}% within TAT</span>
           </p>
         )}
 
@@ -134,7 +134,7 @@ function HandlerCard({ card }: { card: Scorecard }) {
       {/* Footer chips */}
       <div className="flex flex-wrap gap-1.5">
         {card.breachCount > 0 && (
-          <ScorecardChip variant="red">{card.breachCount} SLA {card.breachCount === 1 ? 'breach' : 'breaches'}</ScorecardChip>
+          <ScorecardChip variant="red">{card.breachCount} TAT {card.breachCount === 1 ? 'breach' : 'breaches'}</ScorecardChip>
         )}
         {card.acknowledgedDelayCount > 0 && (
           <ScorecardChip variant="amber">{card.acknowledgedDelayCount} acknowledged {card.acknowledgedDelayCount === 1 ? 'delay' : 'delays'}</ScorecardChip>

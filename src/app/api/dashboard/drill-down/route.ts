@@ -36,7 +36,7 @@ function buildBaseWhere(
 
   switch (type) {
     case 'sla_breaches':
-      base.isSlaBreach = true;
+      base.isTatBreach = true;
       base.claimStatus = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
       break;
     case 'big_claims':
@@ -123,12 +123,12 @@ export async function GET(request: NextRequest) {
 
       const [breachedToday, breachedYesterday] = await Promise.all([
         prisma.claimSnapshot.findMany({
-          where: { snapshotDate: latestDate, isSlaBreach: true },
+          where: { snapshotDate: latestDate, isTatBreach: true },
           select: { claimId: true },
         }),
         prevDate
           ? prisma.claimSnapshot.findMany({
-              where: { snapshotDate: prevDate, isSlaBreach: true },
+              where: { snapshotDate: prevDate, isTatBreach: true },
               select: { claimId: true },
             })
           : Promise.resolve([]),
@@ -142,18 +142,18 @@ export async function GET(request: NextRequest) {
       const baseWhere: Prisma.ClaimSnapshotWhereInput = {
         snapshotDate: latestDate,
         claimId: { in: newlyBreachedIds },
-        isSlaBreach: true,
+        isTatBreach: true,
       };
       const handler = searchParams.get('handler');
       const status = searchParams.get('status');
       if (handler) baseWhere.handler = handler;
       if (status) baseWhere.claimStatus = status;
 
-      const slaConfigs = await prisma.slaConfig.findMany({
+      const tatConfigs = await prisma.tatConfig.findMany({
         where: { isActive: true },
         select: { secondaryStatus: true, maxDays: true },
       });
-      const slaConfigMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c.maxDays]));
+      const tatConfigMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c.maxDays]));
 
       const orderBy: Prisma.ClaimSnapshotOrderByWithRelationInput =
         sort === 'daysInCurrentStatus' ? { daysInCurrentStatus: dir }
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
             cause: true, lossArea: true, insured: true, broker: true,
             dateOfLoss: true, daysInCurrentStatus: true, daysOpen: true,
             intimatedAmount: true, totalPaid: true, totalOs: true, totalIncurred: true,
-            totalRecovery: true, totalSalvage: true, isSlaBreach: true,
+            totalRecovery: true, totalSalvage: true, isTatBreach: true,
           },
         }),
         prisma.claimSnapshot.aggregate({
@@ -206,9 +206,9 @@ export async function GET(request: NextRequest) {
         totalIncurred: r.totalIncurred ? n(r.totalIncurred) : null,
         totalRecovery: r.totalRecovery ? n(r.totalRecovery) : null,
         totalSalvage: r.totalSalvage ? n(r.totalSalvage) : null,
-        isSlaBreach: r.isSlaBreach,
+        isTatBreach: r.isTatBreach,
         daysOverSla: (r.secondaryStatus && r.daysInCurrentStatus != null)
-          ? Math.max(0, r.daysInCurrentStatus - (slaConfigMap.get(r.secondaryStatus) ?? 0))
+          ? Math.max(0, r.daysInCurrentStatus - (tatConfigMap.get(r.secondaryStatus) ?? 0))
           : null,
       }));
 
@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
     if (type === 'stagnant') {
       // Claims breached AND no secondary status change since previous snapshot
       const breachedSnapshots = await prisma.claimSnapshot.findMany({
-        where: { snapshotDate: latestDate, isSlaBreach: true },
+        where: { snapshotDate: latestDate, isTatBreach: true },
         select: { claimId: true, deltaFlags: true },
       });
 
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
       const baseWhere: Prisma.ClaimSnapshotWhereInput = {
         snapshotDate: latestDate,
         claimId: { in: stagnantIds },
-        isSlaBreach: true,
+        isTatBreach: true,
       };
       const handler = searchParams.get('handler');
       const status = searchParams.get('status');
@@ -265,7 +265,7 @@ export async function GET(request: NextRequest) {
             cause: true, lossArea: true, insured: true, broker: true,
             dateOfLoss: true, daysInCurrentStatus: true, daysOpen: true,
             intimatedAmount: true, totalPaid: true, totalOs: true, totalIncurred: true,
-            totalRecovery: true, totalSalvage: true, isSlaBreach: true,
+            totalRecovery: true, totalSalvage: true, isTatBreach: true,
           },
         }),
         prisma.claimSnapshot.aggregate({
@@ -301,7 +301,7 @@ export async function GET(request: NextRequest) {
         totalIncurred: r.totalIncurred ? n(r.totalIncurred) : null,
         totalRecovery: r.totalRecovery ? n(r.totalRecovery) : null,
         totalSalvage: r.totalSalvage ? n(r.totalSalvage) : null,
-        isSlaBreach: r.isSlaBreach,
+        isTatBreach: r.isTatBreach,
       }));
 
       return NextResponse.json({
@@ -383,7 +383,7 @@ export async function GET(request: NextRequest) {
           totalIncurred: snap?.totalIncurred ? n(snap.totalIncurred) : null,
           totalRecovery: null,
           totalSalvage: null,
-          isSlaBreach: false,
+          isTatBreach: false,
           flagType: f.flagType as string,
           flagDetail: detail ? (detail['message'] as string ?? detail['detail'] as string ?? JSON.stringify(detail)) : null,
           flaggedAt: f.createdAt.toISOString(),
@@ -433,7 +433,7 @@ export async function GET(request: NextRequest) {
           cause: true, lossArea: true, insured: true, broker: true,
           dateOfLoss: true, daysInCurrentStatus: true, daysOpen: true,
           intimatedAmount: true, totalPaid: true, totalOs: true, totalIncurred: true,
-          totalRecovery: true, totalSalvage: true, isSlaBreach: true, deltaFlags: true,
+          totalRecovery: true, totalSalvage: true, isTatBreach: true, deltaFlags: true,
         },
       }),
       prisma.claimSnapshot.aggregate({
@@ -481,16 +481,16 @@ export async function GET(request: NextRequest) {
     const delayMap = new Map<string, { hasDelay: boolean; expectedDate: string | null }>();
 
     // SLA config for breach day computation
-    let slaConfigMap = new Map<string, number>();
+    let tatConfigMap = new Map<string, number>();
     if (type === 'sla_breaches') {
-      const configs = await prisma.slaConfig.findMany({ where: { isActive: true }, select: { secondaryStatus: true, maxDays: true } });
-      for (const c of configs) slaConfigMap.set(c.secondaryStatus, c.maxDays);
+      const configs = await prisma.tatConfig.findMany({ where: { isActive: true }, select: { secondaryStatus: true, maxDays: true } });
+      for (const c of configs) tatConfigMap.set(c.secondaryStatus, c.maxDays);
     }
 
     const claims = rows.map(r => {
       const flags = r.deltaFlags as Record<string, unknown> | null;
       const daysOverSla = (type === 'sla_breaches' && r.secondaryStatus && r.daysInCurrentStatus != null)
-        ? Math.max(0, r.daysInCurrentStatus - (slaConfigMap.get(r.secondaryStatus) ?? 0))
+        ? Math.max(0, r.daysInCurrentStatus - (tatConfigMap.get(r.secondaryStatus) ?? 0))
         : null;
 
       const delay = delayMap.get(r.claimId);
@@ -513,7 +513,7 @@ export async function GET(request: NextRequest) {
         totalIncurred: r.totalIncurred ? n(r.totalIncurred) : null,
         totalRecovery: r.totalRecovery ? n(r.totalRecovery) : null,
         totalSalvage: r.totalSalvage ? n(r.totalSalvage) : null,
-        isSlaBreach: r.isSlaBreach,
+        isTatBreach: r.isTatBreach,
         daysOverSla,
         // Delta fields
         prevStatus: flags?.['prev_status'] as string ?? null,
@@ -530,8 +530,8 @@ export async function GET(request: NextRequest) {
     });
 
     // Build summary extras
-    const slaBreachCount = type === 'handler'
-      ? await prisma.claimSnapshot.count({ where: { ...baseWhere, isSlaBreach: true } })
+    const tatBreachCount = type === 'handler'
+      ? await prisma.claimSnapshot.count({ where: { ...baseWhere, isTatBreach: true } })
       : undefined;
 
     const worstBreachDays = type === 'sla_breaches' ? (agg._max.daysInCurrentStatus ?? 0) : undefined;
@@ -553,7 +553,7 @@ export async function GET(request: NextRequest) {
         byArea: byAreaRaw.map(r => ({ area: r.lossArea ?? 'Unknown', count: r._count.claimId })),
         worstBreachDays,
         avgDaysOverSla: worstBreachDays != null ? worstBreachDays : undefined,
-        slaBreachCount,
+        tatBreachCount,
         latestPaymentDate: latestPaymentDate ?? undefined,
       },
       claims,

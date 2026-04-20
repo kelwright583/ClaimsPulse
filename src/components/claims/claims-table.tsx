@@ -23,7 +23,7 @@ interface ClaimRow {
   cause: string | null;
   claimStatus: string | null;
   secondaryStatus: string | null;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   daysInCurrentStatus: number | null;
   totalIncurred: number | null;
   totalOs: number | null;
@@ -94,7 +94,7 @@ export function ClaimsTable({
       if (snapshotDate) params.set('snapshotDate', snapshotDate);
       if (handlerFilter) params.set('handler', handlerFilter);
       if (claimStatusFilter) params.set('claimStatus', claimStatusFilter);
-      if (slaBreachFilter) params.set('isSlaBreach', slaBreachFilter);
+      if (slaBreachFilter) params.set('isTatBreach', slaBreachFilter);
       if (sort.length > 0) {
         params.set('sortBy', sort[0].id);
         params.set('sortDir', sort[0].desc ? 'desc' : 'asc');
@@ -185,8 +185,8 @@ export function ClaimsTable({
         );
       },
     }),
-    columnHelper.accessor('isSlaBreach', {
-      header: 'SLA',
+    columnHelper.accessor('isTatBreach', {
+      header: 'TAT',
       cell: info => info.getValue() ? <SlaBreachDot /> : null,
       enableSorting: true,
     }),
@@ -239,7 +239,7 @@ export function ClaimsTable({
 
   // Export CSV
   function exportCsv() {
-    const headers = ['Claim ID', 'Handler', 'Insured', 'Cause', 'Claim Status', 'Secondary Status', 'SLA Breach', 'Days', 'Total Incurred', 'Outstanding', 'Snapshot Date'];
+    const headers = ['Claim ID', 'Handler', 'Insured', 'Cause', 'Claim Status', 'Secondary Status', 'TAT Breach', 'Days', 'Total Incurred', 'Outstanding', 'Snapshot Date'];
     const rows = filteredData.map(r => [
       r.claimId,
       r.handler ?? '',
@@ -247,7 +247,7 @@ export function ClaimsTable({
       r.cause ?? '',
       r.claimStatus ?? '',
       r.secondaryStatus ?? '',
-      r.isSlaBreach ? 'Yes' : 'No',
+      r.isTatBreach ? 'Yes' : 'No',
       r.daysInCurrentStatus ?? '',
       r.totalIncurred ?? '',
       r.totalOs ?? '',
@@ -282,7 +282,7 @@ export function ClaimsTable({
           search={search}
           handler={handlerFilter}
           claimStatus={claimStatusFilter}
-          isSlaBreach={slaBreachFilter}
+          isTatBreach={slaBreachFilter}
           handlers={showHandlerFilter ? handlers : []}
           statuses={statuses}
           onSearch={setSearch}

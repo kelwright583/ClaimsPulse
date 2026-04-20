@@ -61,12 +61,12 @@ export async function GET() {
     const latestClaims = maxDate
       ? await prisma.claimSnapshot.findMany({
           where: { snapshotDate: maxDate instanceof Date ? maxDate : new Date(maxDate) },
-          select: { claimStatus: true, totalIncurred: true, totalOs: true, totalPaid: true, isSlaBreach: true },
+          select: { claimStatus: true, totalIncurred: true, totalOs: true, totalPaid: true, isTatBreach: true },
         })
       : [];
 
     const openClaims = latestClaims.filter(c => !['Finalised', 'Repudiated', 'Cancelled'].includes(c.claimStatus ?? '')).length;
-    const slaBreaches = latestClaims.filter(c => c.isSlaBreach).length;
+    const tatBreaches = latestClaims.filter(c => c.isTatBreach).length;
     const totalIncurred = latestClaims.reduce((s, c) => s + num(c.totalIncurred), 0);
     const totalOs = latestClaims.reduce((s, c) => s + num(c.totalOs), 0);
     const totalPaid = latestClaims.reduce((s, c) => s + num(c.totalPaid), 0);
@@ -85,7 +85,7 @@ export async function GET() {
     return Response.json({
       summary: {
         openClaims,
-        slaBreaches,
+        tatBreaches,
         totalIncurred,
         totalOs,
         totalPaid,

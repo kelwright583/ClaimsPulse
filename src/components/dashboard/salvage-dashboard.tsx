@@ -11,7 +11,7 @@ interface SalvageClaim {
   cause: string | null;
   claimStatus: string | null;
   daysInCurrentStatus: number;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   totalSalvage: number;
   totalRecovery: number;
   totalOs: number;
@@ -53,7 +53,7 @@ export function SalvageDashboard() {
 
   const claims = data?.claims ?? [];
   const stats = data?.stats ?? { total: 0, totalSalvage: 0, totalRecovery: 0, totalOs: 0 };
-  const slaBreaches = claims.filter(c => c.isSlaBreach);
+  const tatBreaches = claims.filter(c => c.isTatBreach);
 
   return (
     <div>
@@ -71,13 +71,13 @@ export function SalvageDashboard() {
         <StatCard label="Outstanding" value={formatZAR(stats.totalOs, 0)} variant="default" />
       </div>
 
-      {slaBreaches.length > 0 && (
+      {tatBreaches.length > 0 && (
         <div className="mb-6 px-4 py-3 bg-[#991B1B]/5 border border-[#991B1B]/30 rounded-xl">
           <p className="text-sm font-semibold text-[#991B1B] mb-2">
-            {slaBreaches.length} salvage claim{slaBreaches.length !== 1 ? 's' : ''} breaching SLA
+            {tatBreaches.length} salvage claim{tatBreaches.length !== 1 ? 's' : ''} breaching TAT
           </p>
           <div className="space-y-1">
-            {slaBreaches.slice(0, 5).map(c => (
+            {tatBreaches.slice(0, 5).map(c => (
               <div key={c.claimId} className="flex items-center gap-4 text-sm">
                 <a href={`/claims/${encodeURIComponent(c.claimId)}`} className="font-mono font-medium text-[#0D2761] hover:underline">
                   {c.claimId}

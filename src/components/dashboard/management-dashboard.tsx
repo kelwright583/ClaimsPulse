@@ -6,7 +6,7 @@ import { formatZAR, formatDate } from '@/lib/utils';
 
 interface ManagementSummary {
   openClaims: number;
-  slaBreaches: number;
+  tatBreaches: number;
   totalIncurred: number;
   totalOs: number;
   totalPaid: number;
@@ -170,8 +170,8 @@ export function ManagementDashboard() {
         )}
       </div>
 
-      {/* SLA breach alert */}
-      {summary.slaBreaches > 0 && (
+      {/* TAT breach alert */}
+      {summary.tatBreaches > 0 && (
         <div className="mb-6 flex items-center justify-between gap-4 px-4 py-3 bg-[#FEE2E2] border border-[#991B1B]/30 rounded-xl">
           <div className="flex items-center gap-3">
             <span className="relative flex h-3 w-3">
@@ -179,11 +179,11 @@ export function ManagementDashboard() {
               <span className="relative inline-flex rounded-full h-3 w-3 bg-[#991B1B]" />
             </span>
             <p className="text-sm font-semibold text-[#991B1B]">
-              {summary.slaBreaches} claim{summary.slaBreaches !== 1 ? 's' : ''} currently breaching SLA
+              {summary.tatBreaches} claim{summary.tatBreaches !== 1 ? 's' : ''} currently breaching TAT
             </p>
           </div>
-          <a href="/sla" className="text-xs font-medium text-[#991B1B] hover:underline flex-shrink-0">
-            View SLA Watchlist →
+          <a href="/tat" className="text-xs font-medium text-[#991B1B] hover:underline flex-shrink-0">
+            View TAT Watchlist →
           </a>
         </div>
       )}
@@ -196,9 +196,9 @@ export function ManagementDashboard() {
           variant="default"
         />
         <StatCard
-          label="SLA Breaches"
-          value={summary.slaBreaches}
-          variant={summary.slaBreaches > 0 ? 'danger' : 'default'}
+          label="TAT Breaches"
+          value={summary.tatBreaches}
+          variant={summary.tatBreaches > 0 ? 'danger' : 'default'}
         />
         <StatCard
           label="Total Incurred"

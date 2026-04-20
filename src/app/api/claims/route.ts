@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const secondaryStatusFilter = searchParams.get('secondaryStatus');
     const causeFilter = searchParams.get('cause');
     const brokerFilter = searchParams.get('broker');
-    const isSlaBreach = searchParams.get('isSlaBreach');
+    const isTatBreach = searchParams.get('isTatBreach');
     let snapshotDateParam = searchParams.get('snapshotDate');
 
     // Get latest snapshot date if not specified
@@ -66,8 +66,8 @@ export async function GET(request: Request) {
     if (secondaryStatusFilter) where.secondaryStatus = secondaryStatusFilter;
     if (causeFilter) where.cause = { contains: causeFilter, mode: 'insensitive' };
     if (brokerFilter) where.broker = { contains: brokerFilter, mode: 'insensitive' };
-    if (isSlaBreach === 'true') where.isSlaBreach = true;
-    if (isSlaBreach === 'false') where.isSlaBreach = false;
+    if (isTatBreach === 'true') where.isTatBreach = true;
+    if (isTatBreach === 'false') where.isTatBreach = false;
 
     // Valid sort columns
     const validSortCols: Record<string, string> = {
@@ -96,8 +96,8 @@ export async function GET(request: Request) {
     ]);
 
     // Get SLA configs to join priority
-    const slaConfigs = await prisma.slaConfig.findMany({ where: { isActive: true } });
-    const slaMap = new Map(slaConfigs.map(c => [c.secondaryStatus, c]));
+    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
 
     const data = snapshots.map(s => {
       const sla = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;

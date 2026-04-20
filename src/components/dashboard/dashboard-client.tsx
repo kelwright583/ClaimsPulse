@@ -9,6 +9,9 @@ import { ViewSwitcher } from './view-switcher';
 import { SubViewSwitcher } from './sub-view-switcher';
 import { FilterBar } from './filter-bar';
 
+// Sub-view components — management overview
+import { ManagementOverviewClient } from './management-overview/management-overview-client';
+
 // Sub-view components — claims
 import { MorningBrief } from './claims/morning-brief';
 import { PortfolioHealth } from './claims/portfolio-health';
@@ -17,18 +20,11 @@ import { BrokerLens } from './claims/broker-lens';
 import { GeographicPeril } from './claims/geographic-peril';
 import { ActionsRequired } from './claims/actions-required';
 
-// Sub-view components — executive
-import { PerformanceVsTarget } from './executive/performance-vs-target';
-import { FinancialSummary } from './executive/financial-summary';
-import { GrowthTrajectory } from './executive/growth-trajectory';
-import { ScenarioModeller } from './executive/scenario-modeller';
-import { BigClaimsWatch } from './executive/big-claims-watch';
-
 // Sub-view components — my-work
 import ActionList from './my-work/action-list';
 import MyPortfolio from './my-work/my-portfolio';
 import ProductivityScores from './my-work/productivity-scores';
-import CsSlaHealth from './my-work/cs-sla-health';
+import CsTatHealth from './my-work/cs-tat-health';
 
 interface DashboardClientProps {
   role: UserRole;
@@ -129,21 +125,13 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
   function renderSubView() {
     if (activeView === 'claims') {
       switch (activeSub) {
-        case 'morning-brief':      return <MorningBrief {...subProps} />;
-        case 'portfolio-health':   return <PortfolioHealth {...subProps} />;
-        case 'handler-performance':return <HandlerPerformance {...subProps} />;
-        case 'broker-lens':        return <BrokerLens {...subProps} />;
-        case 'geographic-peril':   return <GeographicPeril {...subProps} />;
-        case 'actions-required':   return <ActionsRequired {...subProps} />;
-      }
-    }
-    if (activeView === 'executive') {
-      switch (activeSub) {
-        case 'performance-vs-target': return <PerformanceVsTarget {...subProps} />;
-        case 'financial-summary':     return <FinancialSummary {...subProps} />;
-        case 'growth-trajectory':     return <GrowthTrajectory {...subProps} />;
-        case 'scenario-modeller':     return <ScenarioModeller {...subProps} />;
-        case 'big-claims-watch':      return <BigClaimsWatch {...subProps} />;
+        case 'management-overview': return <ManagementOverviewClient />;
+        case 'morning-brief':       return <MorningBrief {...subProps} />;
+        case 'portfolio-health':    return <PortfolioHealth {...subProps} />;
+        case 'handler-performance': return <HandlerPerformance {...subProps} />;
+        case 'broker-lens':         return <BrokerLens {...subProps} />;
+        case 'geographic-peril':    return <GeographicPeril {...subProps} />;
+        case 'actions-required':    return <ActionsRequired {...subProps} />;
       }
     }
     if (activeView === 'my-work') {
@@ -152,7 +140,7 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
         case 'action-list':         return <ActionList {...myWorkProps} />;
         case 'my-portfolio':        return <MyPortfolio {...myWorkProps} />;
         case 'productivity-scores': return <ProductivityScores {...myWorkProps} />;
-        case 'cs-sla-health':       return <CsSlaHealth {...myWorkProps} />;
+        case 'cs-sla-health':       return <CsTatHealth {...myWorkProps} />;
       }
     }
     return null;

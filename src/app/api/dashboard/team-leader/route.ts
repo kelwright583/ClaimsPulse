@@ -19,7 +19,7 @@ export async function GET() {
     if (!maxDate) {
       return Response.json({
         totalOpenClaims: 0,
-        slaBreachCount: 0,
+        tatBreachCount: 0,
         finalisedToday: 0,
         pendingApprovals: [],
         escalations: [],
@@ -49,7 +49,7 @@ export async function GET() {
         cause: true,
         totalOs: true,
         totalIncurred: true,
-        isSlaBreach: true,
+        isTatBreach: true,
         deltaFlags: true,
         daysInCurrentStatus: true,
         complexityWeight: true,
@@ -62,7 +62,7 @@ export async function GET() {
       s => !CLOSED.has(s.claimStatus ?? ''),
     );
 
-    const slaBreachCount = snapshots.filter(s => s.isSlaBreach).length;
+    const tatBreachCount = snapshots.filter(s => s.isTatBreach).length;
     const finalisedToday = snapshots.filter(s =>
       (s.deltaFlags as Record<string, boolean> | null)?.['finalised'] === true,
     ).length;
@@ -126,7 +126,7 @@ export async function GET() {
     // Attach SLA breach counts per handler
     const slaByHandler = new Map<string, number>();
     for (const s of snapshots) {
-      if (s.isSlaBreach) {
+      if (s.isTatBreach) {
         const h = s.handler?.trim() || 'Unassigned';
         slaByHandler.set(h, (slaByHandler.get(h) ?? 0) + 1);
       }
@@ -135,13 +135,13 @@ export async function GET() {
     const handlerMetrics = Array.from(handlerMap.entries())
       .map(([handler, snaps]) => ({
         ...computeHandlerMetrics(handler, snaps, paymentClaimIds),
-        slaBreaches: slaByHandler.get(handler) ?? 0,
+        tatBreaches: slaByHandler.get(handler) ?? 0,
       }))
-      .sort((a, b) => b.slaBreaches - a.slaBreaches || b.openClaims - a.openClaims);
+      .sort((a, b) => b.tatBreaches - a.tatBreaches || b.openClaims - a.openClaims);
 
     return Response.json({
       totalOpenClaims: openSnapshots.length,
-      slaBreachCount,
+      tatBreachCount,
       finalisedToday,
       pendingApprovals: pendingApprovals.slice(0, 20),
       escalations: escalations.slice(0, 20),

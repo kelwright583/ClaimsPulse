@@ -6,7 +6,7 @@ import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import { prisma } from '@/lib/prisma';
 import { parseClaimsReport } from '@/lib/parsers/claims-parser';
 import { computeDelta } from '@/lib/compute/delta';
-import { computeSlaBreaches } from '@/lib/compute/sla';
+import { computeTatBreaches } from '@/lib/compute/sla';
 import { computeFlags } from '@/lib/compute/fraud-signals';
 import { COMPLEXITY_WEIGHTS, DEFAULT_WEIGHT } from '@/lib/compute/productivity';
 
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   // Run all pre-insert DB reads in parallel — they are fully independent of each other
   const claimIds = rows.map(r => r.claimId);
 
-  const [previousSnapshots, slaConfigs, priorSnapshotsForDays, existingSnapshots] = await Promise.all([
+  const [previousSnapshots, tatConfigs, priorSnapshotsForDays, existingSnapshots] = await Promise.all([
     // Latest snapshot per claimId from any prior date (for delta flags)
     prisma.claimSnapshot.findMany({
       where: { snapshotDate: { lt: snapshotDate } },
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       select: { claimId: true, claimStatus: true, secondaryStatus: true, totalIncurred: true, totalOs: true },
     }),
     // SLA config (small table)
-    prisma.slaConfig.findMany({ where: { isActive: true } }),
+    prisma.tatConfig.findMany({ where: { isActive: true } }),
     // All prior snapshots for these claims (for daysInCurrentStatus)
     prisma.claimSnapshot.findMany({
       where: { claimId: { in: claimIds }, snapshotDate: { lte: snapshotDate } },
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
       ?? (row.dateOfLoss
         ? Math.floor((snapshotDate.getTime() - new Date(row.dateOfLoss).getTime()) / 86400000)
         : 0);
-    const isSlaBreach = computeSlaBreaches({ ...row, daysInCurrentStatus }, slaConfigs, snapshotDate);
+    const isTatBreach = computeTatBreaches({ ...row, daysInCurrentStatus }, tatConfigs, snapshotDate);
     const complexityWeight = COMPLEXITY_WEIGHTS[row.cause ?? ''] ?? DEFAULT_WEIGHT;
 
     // notificationGapDays: dateOfNotification - dateOfLoss
@@ -194,7 +194,7 @@ export async function POST(request: Request) {
         reserveUtilisationPct,
         complexityWeight,
         deltaFlags,
-        isSlaBreach,
+        isTatBreach,
         daysInCurrentStatus,
         daysOpen,
       },
@@ -275,7 +275,7 @@ export async function POST(request: Request) {
         ${d.reserveUtilisationPct}::decimal,
         ${d.complexityWeight}::int,
         ${JSON.stringify(d.deltaFlags)}::jsonb,
-        ${d.isSlaBreach},
+        ${d.isTatBreach},
         ${d.daysInCurrentStatus}::int,
         ${d.daysOpen}::int
       )`);
@@ -407,7 +407,7 @@ export async function POST(request: Request) {
               ${d.totalOs}::decimal, ${d.totalIncurred}::decimal, ${d.sectionSumInsured}::decimal,
               ${d.notificationGapDays}::int, ${d.reserveUtilisationPct}::decimal,
               ${d.complexityWeight}::int, ${JSON.stringify(d.deltaFlags)}::jsonb,
-              ${d.isSlaBreach}, ${d.daysInCurrentStatus}::int, ${d.daysOpen}::int
+              ${d.isTatBreach}, ${d.daysInCurrentStatus}::int, ${d.daysOpen}::int
             )
             ON CONFLICT (claim_id, snapshot_date) DO UPDATE SET
               import_run_id = EXCLUDED.import_run_id,
@@ -444,6 +444,19 @@ export async function POST(request: Request) {
     },
   });
 
+  let flagsComputed = false;
+  let flagComputationError: string | undefined;
+  try {
+    await computeFlags(importRun.id, snapshotDate);
+    flagsComputed = true;
+  } catch (err) {
+    flagComputationError = err instanceof Error ? err.message : String(err);
+    await prisma.importRun.update({
+      where: { id: importRun.id },
+      data: { errorsJson: { flagError: flagComputationError } },
+    });
+  }
+
   return Response.json({
     success: true,
     importRunId: importRun.id,
@@ -453,6 +466,8 @@ export async function POST(request: Request) {
     rowsSkipped: rows.length - dedupedList.length,
     rowsErrored: errored,
     snapshotDate: snapshotDate.toISOString(),
+    flagsComputed,
+    flagComputationError,
   });
   } catch (err) {
     console.error('[claims-import]', err);

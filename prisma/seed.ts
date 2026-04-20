@@ -25,20 +25,41 @@ const SLA_SEED = [
 ];
 
 async function main() {
-  console.log('Seeding SLA config...');
+  console.log('Seeding TAT config...');
 
   for (const entry of SLA_SEED) {
-    await prisma.slaConfig.upsert({
+    await prisma.tatConfig.upsert({
       where: { secondaryStatus: entry.secondaryStatus },
       update: {},
       create: entry,
     });
   }
 
-  console.log(`Seeded ${SLA_SEED.length} SLA config entries.`);
+  console.log(`Seeded ${SLA_SEED.length} TAT config entries.`);
+}
+
+const metricConfigs = [
+  { metricType: 'daily_claims_registered', label: 'Daily claims registered', unit: 'count', cadence: 'daily', description: 'New claims captured per handler per day' },
+  { metricType: 'daily_claims_finalised',  label: 'Daily claims finalised',  unit: 'count', cadence: 'daily', description: 'Claims finalised per handler per day' },
+  { metricType: 'pct_open_finalised',      label: '% of open claims finalised', unit: 'pct', cadence: 'monthly', description: 'Must finalise this % of open book per month' },
+  { metricType: 'zero_activity_pct',       label: 'Zero-activity %',         unit: 'pct', cadence: 'weekly', description: '% of claims with no movement in 7 days (lower is better)' },
+  { metricType: 'tat_compliance_pct',      label: 'TAT compliance %',        unit: 'pct', cadence: 'monthly', description: '% of claims within TAT threshold' },
+];
+
+async function seedMetricConfigs() {
+  console.log('Seeding target metric configs...');
+  for (const cfg of metricConfigs) {
+    await prisma.targetMetricConfig.upsert({
+      where: { metricType: cfg.metricType },
+      update: cfg,
+      create: cfg,
+    });
+  }
+  console.log(`Seeded ${metricConfigs.length} metric config entries.`);
 }
 
 main()
+  .then(() => seedMetricConfigs())
   .catch((e) => {
     console.error(e);
     process.exit(1);

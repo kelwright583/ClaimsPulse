@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   TrendingDown, FileText, Clock, BarChart3, Mail,
@@ -9,6 +10,20 @@ import {
 import {
   LineChart, Line, ResponsiveContainer, Tooltip,
 } from 'recharts';
+import type { UserRole } from '@/types/roles';
+import type { FilterState } from '@/components/dashboard/types';
+import { DEFAULT_FILTERS } from '@/components/dashboard/types';
+import { FilterBar } from '@/components/dashboard/filter-bar';
+import { PerformanceVsTarget } from '@/components/dashboard/executive/performance-vs-target';
+import { FinancialSummary } from '@/components/dashboard/executive/financial-summary';
+import { GrowthTrajectory } from '@/components/dashboard/executive/growth-trajectory';
+import { ScenarioModeller } from '@/components/dashboard/executive/scenario-modeller';
+import { BigClaimsWatch } from '@/components/dashboard/executive/big-claims-watch';
+
+export interface Props {
+  role: string;
+  userId: string;
+}
 
 interface GwpVsTarget {
   gwp: number;
@@ -23,7 +38,7 @@ interface TrendPoint {
 interface StrategicData {
   lossRatio: number | null;
   openClaims: number;
-  slaCompliance: number | null;
+  tatCompliance: number | null;
   gwpVsTarget: GwpVsTarget | null;
   mailboxTatCompliance: number | null;
   bigClaimsCount: number;
@@ -87,10 +102,43 @@ function KpiCard({ label, value, icon: Icon, href, delta, deltaPositive, childre
   );
 }
 
-export function StrategicDashboard() {
+const SUB_TABS = [
+  { key: 'performance-vs-target', label: 'Performance vs target' },
+  { key: 'financial-summary',     label: 'Financial summary' },
+  { key: 'growth-trajectory',     label: 'Growth trajectory' },
+  { key: 'scenario-modeller',     label: 'Scenario modeller' },
+  { key: 'big-claims-watch',      label: 'Big claims watch' },
+] as const;
+
+type SubTabKey = typeof SUB_TABS[number]['key'];
+
+const SUB_FILTERS: Record<SubTabKey, (keyof FilterState)[]> = {
+  'performance-vs-target': ['productLine', 'uwYear'],
+  'financial-summary':     ['period'],
+  'growth-trajectory':     ['productLine', 'broker'],
+  'scenario-modeller':     [],
+  'big-claims-watch':      ['cause', 'handler', 'dateRange'],
+};
+
+export function StrategicDashboard({ role, userId }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // KPI data state
   const [data, setData] = useState<StrategicData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Active sub tab — driven by ?sub= param
+  const subParam = searchParams.get('sub') as SubTabKey | null;
+  const activeTab: SubTabKey =
+    subParam && SUB_TABS.some(t => t.key === subParam)
+      ? subParam
+      : SUB_TABS[0].key;
+
+  // Filters state
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
   useEffect(() => {
     fetch('/api/dashboard/strategic')
@@ -103,31 +151,48 @@ export function StrategicDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-[#6B7280]">
-        Loading strategic view…
-      </div>
-    );
+  const handleTabChange = useCallback(
+    (key: SubTabKey) => {
+      const p = new URLSearchParams(searchParams.toString());
+      p.set('sub', key);
+      router.push(`${pathname}?${p.toString()}`);
+    },
+    [router, pathname, searchParams],
+  );
+
+  const handleFilterChange = useCallback(
+    (key: keyof FilterState, value: string) => {
+      setFilters(prev => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
+  const handleClearFilters = useCallback(() => {
+    setFilters(DEFAULT_FILTERS);
+  }, []);
+
+  const subProps = { role: role as UserRole, userId, filters };
+  const activeFilters = SUB_FILTERS[activeTab];
+
+  function renderSubView() {
+    switch (activeTab) {
+      case 'performance-vs-target': return <PerformanceVsTarget {...subProps} />;
+      case 'financial-summary':     return <FinancialSummary {...subProps} />;
+      case 'growth-trajectory':     return <GrowthTrajectory {...subProps} />;
+      case 'scenario-modeller':     return <ScenarioModeller {...subProps} />;
+      case 'big-claims-watch':      return <BigClaimsWatch {...subProps} />;
+    }
   }
 
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">{error}</div>
-    );
-  }
-
-  if (!data) return null;
-
-  const gwpDisplay = data.gwpVsTarget
+  const gwpDisplay = data?.gwpVsTarget
     ? formatRand(data.gwpVsTarget.gwp)
     : '—';
 
-  const gwpDelta = data.gwpVsTarget?.target
+  const gwpDelta = data?.gwpVsTarget?.target
     ? ((data.gwpVsTarget.gwp / data.gwpVsTarget.target) * 100).toFixed(0) + '% of target'
     : undefined;
 
-  const gwpDeltaPositive = data.gwpVsTarget?.target
+  const gwpDeltaPositive = data?.gwpVsTarget?.target
     ? data.gwpVsTarget.gwp >= data.gwpVsTarget.target
     : undefined;
 
@@ -137,107 +202,151 @@ export function StrategicDashboard() {
       <div>
         <h1 className="text-2xl font-bold text-[#0D2761]">Strategic View</h1>
         <p className="text-sm text-[#6B7280]">Santam Emerging Business — Executive Dashboard</p>
-        <p className="text-xs text-[#6B7280] mt-1">
-          As of {new Date(data.asOf).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })}
-        </p>
+        {data && (
+          <p className="text-xs text-[#6B7280] mt-1">
+            As of {new Date(data.asOf).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })}
+          </p>
+        )}
       </div>
 
       {/* KPI grid: 4x2 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Loss ratio */}
-        <KpiCard
-          label="Loss Ratio (YTD)"
-          value={formatPct(data.lossRatio !== null ? data.lossRatio * 100 : null)}
-          icon={TrendingDown}
-          href="/finance"
-          delta={data.lossRatio !== null ? `${(data.lossRatio * 100).toFixed(1)}%` : undefined}
-          deltaPositive={data.lossRatio !== null ? data.lossRatio < 0.65 : undefined}
-        />
+      {loading && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-32 bg-[#F4F6FA] rounded-xl animate-pulse" />
+          ))}
+        </div>
+      )}
 
-        {/* 2. Open claims */}
-        <KpiCard
-          label="Open Claims"
-          value={formatInt(data.openClaims)}
-          icon={FileText}
-          href="/claims/sla"
-        />
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">{error}</div>
+      )}
 
-        {/* 3. SLA compliance */}
-        <KpiCard
-          label="SLA Compliance"
-          value={formatPct(data.slaCompliance)}
-          icon={Clock}
-          href="/claims/sla"
-          delta={data.slaCompliance !== null ? `${data.slaCompliance.toFixed(1)}%` : undefined}
-          deltaPositive={data.slaCompliance !== null ? data.slaCompliance >= 85 : undefined}
-        />
+      {!loading && !error && data && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard
+            label="Loss Ratio (YTD)"
+            value={formatPct(data.lossRatio !== null ? data.lossRatio * 100 : null)}
+            icon={TrendingDown}
+            href="/finance"
+            delta={data.lossRatio !== null ? `${(data.lossRatio * 100).toFixed(1)}%` : undefined}
+            deltaPositive={data.lossRatio !== null ? data.lossRatio < 0.65 : undefined}
+          />
 
-        {/* 4. GWP vs target */}
-        <KpiCard
-          label="GWP vs Target"
-          value={gwpDisplay}
-          icon={BarChart3}
-          href="/underwriting"
-          delta={gwpDelta}
-          deltaPositive={gwpDeltaPositive}
-        />
+          <KpiCard
+            label="Open Claims"
+            value={formatInt(data.openClaims)}
+            icon={FileText}
+            href="/claims/tat"
+          />
 
-        {/* 5. Mailbox TAT */}
-        <KpiCard
-          label="Mailbox TAT Compliance"
-          value={formatPct(data.mailboxTatCompliance)}
-          icon={Mail}
-          href="/mailbox/tat"
-          delta={data.mailboxTatCompliance !== null ? `${data.mailboxTatCompliance.toFixed(1)}%` : undefined}
-          deltaPositive={data.mailboxTatCompliance !== null ? data.mailboxTatCompliance >= 90 : undefined}
-        />
+          <KpiCard
+            label="TAT Compliance"
+            value={formatPct(data.tatCompliance)}
+            icon={Clock}
+            href="/claims/tat"
+            delta={data.tatCompliance !== null ? `${data.tatCompliance.toFixed(1)}%` : undefined}
+            deltaPositive={data.tatCompliance !== null ? data.tatCompliance >= 85 : undefined}
+          />
 
-        {/* 6. Big claims */}
-        <KpiCard
-          label="Big Claims Open"
-          value={formatInt(data.bigClaimsCount)}
-          icon={AlertTriangle}
-          href="/claims"
-          delta={data.bigClaimsCount > 0 ? `${data.bigClaimsCount} flagged` : undefined}
-          deltaPositive={data.bigClaimsCount === 0}
-        />
+          <KpiCard
+            label="GWP vs Target"
+            value={gwpDisplay}
+            icon={BarChart3}
+            href="/underwriting"
+            delta={gwpDelta}
+            deltaPositive={gwpDeltaPositive}
+          />
 
-        {/* 7. Reserve position */}
-        <KpiCard
-          label="Reserve Position"
-          value={data.reservePosition !== null ? formatRand(data.reservePosition) : '—'}
-          icon={Shield}
-          href="/finance"
-        />
+          <KpiCard
+            label="Mailbox TAT Compliance"
+            value={formatPct(data.mailboxTatCompliance)}
+            icon={Mail}
+            href="/mailbox/tat"
+            delta={data.mailboxTatCompliance !== null ? `${data.mailboxTatCompliance.toFixed(1)}%` : undefined}
+            deltaPositive={data.mailboxTatCompliance !== null ? data.mailboxTatCompliance >= 90 : undefined}
+          />
 
-        {/* 8. Claims trend (sparkline) */}
-        <KpiCard
-          label="Claims Trend (6mo)"
-          value={data.claimsTrend.length > 0 ? formatInt(data.claimsTrend[data.claimsTrend.length - 1]?.count ?? null) : '—'}
-          icon={Activity}
-          href="/claims"
-        >
-          {data.claimsTrend.length > 1 && (
-            <div className="h-12 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.claimsTrend}>
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#1E5BC6"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Tooltip
-                    contentStyle={{ fontSize: '10px', padding: '4px 8px' }}
-                    formatter={(v) => [v, 'Claims']}
-                    labelFormatter={(l) => l}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </KpiCard>
+          <KpiCard
+            label="Big Claims Open"
+            value={formatInt(data.bigClaimsCount)}
+            icon={AlertTriangle}
+            href="/claims"
+            delta={data.bigClaimsCount > 0 ? `${data.bigClaimsCount} flagged` : undefined}
+            deltaPositive={data.bigClaimsCount === 0}
+          />
+
+          <KpiCard
+            label="Reserve Position"
+            value={data.reservePosition !== null ? formatRand(data.reservePosition) : '—'}
+            icon={Shield}
+            href="/finance"
+          />
+
+          <KpiCard
+            label="Claims Trend (6mo)"
+            value={data.claimsTrend.length > 0 ? formatInt(data.claimsTrend[data.claimsTrend.length - 1]?.count ?? null) : '—'}
+            icon={Activity}
+            href="/claims"
+          >
+            {data.claimsTrend.length > 1 && (
+              <div className="h-12 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data.claimsTrend}>
+                    <Line
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#1E5BC6"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Tooltip
+                      contentStyle={{ fontSize: '10px', padding: '4px 8px' }}
+                      formatter={(v) => [v, 'Claims']}
+                      labelFormatter={(l) => l}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </KpiCard>
+        </div>
+      )}
+
+      {/* Sub-view tab bar */}
+      <div className="border-b border-[#E8EEF8]">
+        <nav className="flex gap-1 overflow-x-auto">
+          {SUB_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => handleTabChange(tab.key)}
+              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+                activeTab === tab.key
+                  ? 'border-[#1E5BC6] text-[#1E5BC6]'
+                  : 'border-transparent text-[#6B7280] hover:text-[#0D2761] hover:border-[#E8EEF8]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Filter bar */}
+      {activeFilters.length > 0 && (
+        <div className="pt-1 pb-1 border-b border-[#E8EEF8]">
+          <FilterBar
+            filters={filters}
+            activeFilters={activeFilters}
+            onChange={handleFilterChange}
+            onClear={handleClearFilters}
+          />
+        </div>
+      )}
+
+      {/* Sub-view content */}
+      <div className="pt-2">
+        {renderSubView()}
       </div>
     </div>
   );

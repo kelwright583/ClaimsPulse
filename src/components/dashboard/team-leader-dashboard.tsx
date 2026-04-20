@@ -20,12 +20,12 @@ interface EscalationItem {
 }
 
 interface EnrichedHandlerMetrics extends HandlerMetrics {
-  slaBreaches: number;
+  tatBreaches: number;
 }
 
 interface TeamLeaderData {
   totalOpenClaims: number;
-  slaBreachCount: number;
+  tatBreachCount: number;
   finalisedToday: number;
   pendingApprovals: ApprovalItem[];
   escalations: EscalationItem[];
@@ -33,7 +33,7 @@ interface TeamLeaderData {
   snapshotDate: string | null;
 }
 
-type HandlerSortKey = 'handler' | 'openClaims' | 'slaBreaches' | 'complexityScore' | 'finalisationRate';
+type HandlerSortKey = 'handler' | 'openClaims' | 'tatBreaches' | 'complexityScore' | 'finalisationRate';
 
 export function TeamLeaderDashboard() {
   const [data, setData] = useState<TeamLeaderData | null>(null);
@@ -108,9 +108,9 @@ export function TeamLeaderDashboard() {
           variant="default"
         />
         <StatCard
-          label="SLA Breaches"
-          value={data.slaBreachCount}
-          variant={data.slaBreachCount > 0 ? 'danger' : 'default'}
+          label="TAT Breaches"
+          value={data.tatBreachCount}
+          variant={data.tatBreachCount > 0 ? 'danger' : 'default'}
         />
         <StatCard
           label="Finalised Today"
@@ -141,7 +141,7 @@ export function TeamLeaderDashboard() {
             ))}
             {data.pendingApprovals.length > 5 && (
               <p className="text-xs text-[#6B7280] pt-1">
-                +{data.pendingApprovals.length - 5} more — <a href="/sla" className="text-[#0D2761] hover:underline">view SLA watchlist</a>
+                +{data.pendingApprovals.length - 5} more — <a href="/tat" className="text-[#0D2761] hover:underline">view TAT watchlist</a>
               </p>
             )}
           </div>
@@ -191,7 +191,7 @@ export function TeamLeaderDashboard() {
                       ['openClaims', 'Open'],
                       ['complexityScore', 'Complexity'],
                       ['finalisationRate', 'Final. Rate'],
-                      ['slaBreaches', 'SLA Breaches'],
+                      ['tatBreaches', 'TAT Breaches'],
                     ] as [HandlerSortKey, string][]
                   ).map(([col, label]) => (
                     <th
@@ -230,9 +230,9 @@ export function TeamLeaderDashboard() {
                         {m.finalisationRate.toFixed(1)}%
                       </td>
                       <td className="px-4 py-3">
-                        {m.slaBreaches > 0 ? (
+                        {m.tatBreaches > 0 ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#991B1B]/10 text-[#991B1B]">
-                            {m.slaBreaches}
+                            {m.tatBreaches}
                           </span>
                         ) : (
                           <span className="text-[#6B7280]">0</span>

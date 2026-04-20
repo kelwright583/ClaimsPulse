@@ -7,7 +7,7 @@ interface ClaimDetailData {
   handler: string | null;
   claimStatus: string | null;
   secondaryStatus: string | null;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   daysInCurrentStatus: number | null;
   slaPriority?: SlaPriority | null;
 
@@ -171,13 +171,13 @@ export function ClaimDetailCard({ claim }: { claim: ClaimDetailData }) {
             value={claim.daysInCurrentStatus != null ? `${claim.daysInCurrentStatus} days` : null}
           />
         </div>
-        {claim.isSlaBreach && (
+        {claim.isTatBreach && (
           <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[#991B1B]">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#991B1B] opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#991B1B]" />
             </span>
-            SLA Breach — this claim has exceeded its SLA threshold
+            TAT Breach — this claim has exceeded its TAT threshold
           </div>
         )}
       </Section>

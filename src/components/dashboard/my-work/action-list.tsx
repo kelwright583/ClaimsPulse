@@ -22,7 +22,7 @@ interface ActionItem {
   totalIncurred: number | null;
   daysInStatus: number | null;
   priority: 'critical' | 'urgent' | 'standard';
-  slaPosition: 'breach' | 'at-risk' | 'on-track';
+  tatPosition: 'breach' | 'at-risk' | 'on-track';
   hasOverdueDelay: boolean;
   expectedDate: string | null;
 }
@@ -73,7 +73,7 @@ function HandlerSelector({
 }
 
 function ItemCard({ item }: { item: ActionItem }) {
-  const isCritical = item.priority === 'critical' && item.slaPosition === 'breach';
+  const isCritical = item.priority === 'critical' && item.tatPosition === 'breach';
   const isUrgent = item.priority === 'urgent' || item.hasOverdueDelay;
 
   const borderColor = isCritical
@@ -210,15 +210,15 @@ export default function ActionList({
   }
 
   const critical = data.items.filter(
-    (i) => i.priority === 'critical' && i.slaPosition === 'breach',
+    (i) => i.priority === 'critical' && i.tatPosition === 'breach',
   );
   const urgent = data.items.filter(
-    (i) => !(i.priority === 'critical' && i.slaPosition === 'breach') &&
+    (i) => !(i.priority === 'critical' && i.tatPosition === 'breach') &&
       (i.priority === 'urgent' || i.hasOverdueDelay),
   );
   const standard = data.items.filter(
     (i) =>
-      !(i.priority === 'critical' && i.slaPosition === 'breach') &&
+      !(i.priority === 'critical' && i.tatPosition === 'breach') &&
       !(i.priority === 'urgent' || i.hasOverdueDelay),
   );
 

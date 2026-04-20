@@ -69,9 +69,9 @@ async function resolveMetric(metricLink: string): Promise<{ label: string; value
     switch (metricLink) {
       case 'sla_breach_count': {
         const count = await prisma.claimSnapshot.count({
-          where: { snapshotDate: latest.snapshotDate, isSlaBreach: true },
+          where: { snapshotDate: latest.snapshotDate, isTatBreach: true },
         });
-        return { label: 'SLA breaches (open)', value: String(count), target: '0' };
+        return { label: 'TAT breaches (open)', value: String(count), target: '0' };
       }
       case 'open_claims_count': {
         const count = await prisma.claimSnapshot.count({

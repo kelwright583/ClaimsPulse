@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
           prisma.claimSnapshot.count({
             where: { ...latestWhere, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } },
           }),
-          prisma.claimSnapshot.count({ where: { ...latestWhere, isSlaBreach: true } }),
+          prisma.claimSnapshot.count({ where: { ...latestWhere, isTatBreach: true } }),
           prisma.claimSnapshot.count({ where: { ...latestWhere, claimStatus: 'Finalised' } }),
           prisma.claimSnapshot.count({
             where: {
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
       const finalisationComplex = complexDenominator > 0 ? (complexFinalised / complexDenominator) * 100 : null;
 
       const paymentRate = openCount > 0 ? (paidCount / openCount) * 100 : null;
-      const slaCompliance = openCount > 0 ? ((openCount - breachCount) / openCount) * 100 : null;
+      const tatCompliance = openCount > 0 ? ((openCount - breachCount) / openCount) * 100 : null;
 
       return {
         handler,
@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
         finalisationGlass: finalisationGlass !== null ? Math.round(finalisationGlass * 10) / 10 : null,
         finalisationComplex: finalisationComplex !== null ? Math.round(finalisationComplex * 10) / 10 : null,
         paymentRate: paymentRate !== null ? Math.round(paymentRate * 10) / 10 : null,
-        slaCompliance: slaCompliance !== null ? Math.round(slaCompliance * 10) / 10 : null,
+        tatCompliance: tatCompliance !== null ? Math.round(tatCompliance * 10) / 10 : null,
         csScore: null,
         breachCount,
         acknowledgedDelayCount,

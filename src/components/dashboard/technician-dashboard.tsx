@@ -16,7 +16,7 @@ interface ClaimRow {
   cause: string | null;
   claimStatus: string | null;
   secondaryStatus: string | null;
-  isSlaBreach: boolean;
+  isTatBreach: boolean;
   daysInCurrentStatus: number | null;
   totalIncurred: number | null;
   totalOs: number | null;
@@ -43,7 +43,7 @@ function computeCsScore(claims: ClaimRow[]) {
   const finalised = claims.filter(c => c.claimStatus === 'Finalised').length;
   const reopened = claims.filter(c => c.claimStatus === 'Re-opened').length;
   const open = claims.filter(c => !['Finalised', 'Repudiated', 'Cancelled'].includes(c.claimStatus ?? ''));
-  const slaBreaches = open.filter(c => c.isSlaBreach).length;
+  const tatBreaches = open.filter(c => c.isTatBreach).length;
 
   // Finalisation score: % finalised vs 40% target → cap at 100
   const finalisationPct = (finalised / total) * 100;
@@ -54,7 +54,7 @@ function computeCsScore(claims: ClaimRow[]) {
   const qualityScore = Math.max(0, 100 - (reopenRate / 5) * 100);
 
   // Coverage score: % of open claims with no SLA breach
-  const coveragePct = open.length > 0 ? ((open.length - slaBreaches) / open.length) * 100 : 100;
+  const coveragePct = open.length > 0 ? ((open.length - tatBreaches) / open.length) * 100 : 100;
   const coverageScore = coveragePct;
 
   // Speed score: based on avg daysInCurrentStatus for open claims (lower is better, target ≤ 30)
@@ -80,7 +80,7 @@ function computeCsScore(claims: ClaimRow[]) {
     components: {
       finalisation: { score: Math.round(finalisationScore), label: 'Finalisation Rate', value: `${finalisationPct.toFixed(1)}%` },
       quality: { score: Math.round(qualityScore), label: 'Quality (Re-open)', value: `${reopenRate.toFixed(1)}%` },
-      coverage: { score: Math.round(coverageScore), label: 'SLA Coverage', value: `${coveragePct.toFixed(1)}%` },
+      coverage: { score: Math.round(coverageScore), label: 'TAT Coverage', value: `${coveragePct.toFixed(1)}%` },
       speed: { score: Math.round(speedScore), label: 'Speed (Avg Days)', value: `${avgDays.toFixed(0)}d` },
     },
   };
@@ -114,7 +114,7 @@ export function TechnicianDashboard() {
   const openClaims = claims.filter(
     c => c.claimStatus !== 'Finalised' && c.claimStatus !== 'Repudiated' && c.claimStatus !== 'Cancelled'
   );
-  const slaBreaches = claims.filter(c => c.isSlaBreach);
+  const tatBreaches = claims.filter(c => c.isTatBreach);
   const avgOutstanding = openClaims.length > 0
     ? openClaims.reduce((s, c) => s + (c.totalOs ?? 0), 0) / openClaims.length
     : 0;
@@ -141,9 +141,9 @@ export function TechnicianDashboard() {
           variant="default"
         />
         <StatCard
-          label="SLA Breaches"
-          value={slaBreaches.length}
-          variant={slaBreaches.length > 0 ? 'danger' : 'default'}
+          label="TAT Breaches"
+          value={tatBreaches.length}
+          variant={tatBreaches.length > 0 ? 'danger' : 'default'}
         />
         <StatCard
           label="Avg Outstanding"
@@ -201,21 +201,21 @@ export function TechnicianDashboard() {
         </div>
       )}
 
-      {/* SLA Alert strip */}
-      {slaBreaches.length > 0 && (
+      {/* TAT Alert strip */}
+      {tatBreaches.length > 0 && (
         <div className="mb-8">
           <h2 className="text-base font-semibold text-[#0D2761] mb-3">
-            SLA Alerts
+            TAT Alerts
             <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#991B1B] text-white">
-              {slaBreaches.length}
+              {tatBreaches.length}
             </span>
           </h2>
           <div className="bg-white border border-[#991B1B]/20 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
-            {slaBreaches.map((claim, idx) => (
+            {tatBreaches.map((claim, idx) => (
               <div
                 key={claim.id}
                 className={`flex items-center justify-between gap-4 px-4 py-3 ${
-                  idx < slaBreaches.length - 1 ? 'border-b border-[#E8EEF8]' : ''
+                  idx < tatBreaches.length - 1 ? 'border-b border-[#E8EEF8]' : ''
                 }`}
               >
                 <div className="flex items-center gap-4 min-w-0">

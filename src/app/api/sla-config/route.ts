@@ -29,7 +29,7 @@ export async function GET() {
     const ctx = await getSessionContext();
     if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const configs = await prisma.slaConfig.findMany({
+    const configs = await prisma.tatConfig.findMany({
       orderBy: [{ priority: 'asc' }, { maxDays: 'asc' }],
     });
 
@@ -48,7 +48,7 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json() as { id: string; maxDays: number; alertRole: string; priority: string; isActive: boolean };
 
-    const updated = await prisma.slaConfig.update({
+    const updated = await prisma.tatConfig.update({
       where: { id: body.id },
       data: {
         maxDays: body.maxDays,
@@ -78,14 +78,14 @@ export async function POST(request: NextRequest) {
 
     // Reset all configs to defaults
     for (const d of SLA_DEFAULTS) {
-      await prisma.slaConfig.upsert({
+      await prisma.tatConfig.upsert({
         where: { secondaryStatus: d.secondaryStatus },
         create: { ...d, updatedBy: ctx.userId },
         update: { maxDays: d.maxDays, alertRole: d.alertRole, priority: d.priority, isActive: true, updatedBy: ctx.userId },
       });
     }
 
-    const configs = await prisma.slaConfig.findMany({
+    const configs = await prisma.tatConfig.findMany({
       orderBy: [{ priority: 'asc' }, { maxDays: 'asc' }],
     });
 

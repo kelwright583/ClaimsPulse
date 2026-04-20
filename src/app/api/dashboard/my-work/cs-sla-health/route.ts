@@ -29,10 +29,10 @@ async function computeScore(handler: string | null, snapshotDate: Date): Promise
   const [openClaims, breachCount] = await Promise.all([
     prisma.claimSnapshot.findMany({
       where: { snapshotDate, ...handlerWhere, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } },
-      select: { daysInCurrentStatus: true, daysOpen: true, totalPaid: true, isSlaBreach: true },
+      select: { daysInCurrentStatus: true, daysOpen: true, totalPaid: true, isTatBreach: true },
     }),
     prisma.claimSnapshot.count({
-      where: { snapshotDate, ...handlerWhere, isSlaBreach: true },
+      where: { snapshotDate, ...handlerWhere, isTatBreach: true },
     }),
   ]);
 
@@ -59,9 +59,9 @@ async function computeScore(handler: string | null, snapshotDate: Date): Promise
   const reopenRate = totalOpen > 0 ? reopenedCount / totalOpen : 0;
   const quality = Math.max(0, 25 - reopenRate * 25);
 
-  // Coverage: min(25, slaCompliance * 25)
-  const slaCompliance = totalOpen > 0 ? (totalOpen - breachCount) / totalOpen : 1;
-  const coverage = Math.min(25, slaCompliance * 25);
+  // Coverage: min(25, tatCompliance * 25)
+  const tatCompliance = totalOpen > 0 ? (totalOpen - breachCount) / totalOpen : 1;
+  const coverage = Math.min(25, tatCompliance * 25);
 
   // Finalisation: 25 - min(25, (avgDaysOpen / 90) * 25)
   const finalisedClaims = await prisma.claimSnapshot.findMany({
@@ -93,7 +93,7 @@ function buildCoachingNote(components: ScoreComponents): string {
   const notes: Record<string, string> = {
     speed: 'Focus on issuing first payments earlier to improve your response speed score.',
     quality: 'Reduce claim reopening by ensuring thorough assessment and documentation before closure.',
-    coverage: 'Address SLA breaches by prioritising claims that are approaching or have passed their deadline.',
+    coverage: 'Address TAT breaches by prioritising claims that are approaching or have passed their deadline.',
     finalisation: 'Work to reduce the average time to close claims in your portfolio by resolving long-running claims.',
   };
   return notes[lowest] ?? 'Keep up the consistent performance across all areas.';
@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
       by: ['secondaryStatus'],
       where: {
         snapshotDate,
-        isSlaBreach: true,
+        isTatBreach: true,
         ...(handler ? { handler } : {}),
       },
       _count: { claimId: true },
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
     const breachingClaimsRaw = await prisma.claimSnapshot.findMany({
       where: {
         snapshotDate,
-        isSlaBreach: true,
+        isTatBreach: true,
         ...(handler ? { handler } : {}),
       },
       select: { claimId: true, secondaryStatus: true, daysInCurrentStatus: true },
