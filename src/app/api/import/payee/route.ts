@@ -58,6 +58,7 @@ export async function POST(request: Request) {
 
       try {
         const values = chunk.map(r => Prisma.sql`(
+          gen_random_uuid(),
           ${importRun.id}::uuid,
           ${r.claimId},
           ${r.handler ?? null},
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
 
         await prisma.$executeRaw`
           INSERT INTO payments (
-            import_run_id, claim_id, handler, cheque_no,
+            id, import_run_id, claim_id, handler, cheque_no,
             payee, payee_vat_nr, payment_type, requested_by,
             requested_date, authorised_date, printed_date,
             gross_paid_incl_vat, gross_paid_excl_vat, net_paid_incl_vat,
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
           try {
             await prisma.$executeRaw`
               INSERT INTO payments (
-                import_run_id, claim_id, handler, cheque_no,
+                id, import_run_id, claim_id, handler, cheque_no,
                 payee, payee_vat_nr, payment_type, requested_by,
                 requested_date, authorised_date, printed_date,
                 gross_paid_incl_vat, gross_paid_excl_vat, net_paid_incl_vat,
@@ -129,6 +130,7 @@ export async function POST(request: Request) {
                 same_day_auth_print, self_authorised, days_request_to_print
               )
               VALUES (
+                gen_random_uuid(),
                 ${importRun.id}::uuid, ${row.claimId}, ${row.handler ?? null},
                 ${row.chequeNo ?? null}, ${row.payee ?? null}, ${row.payeeVatNr ?? null},
                 ${row.paymentType ?? null}, ${row.requestedBy ?? null},
@@ -171,22 +173,23 @@ export async function POST(request: Request) {
       }
     }
 
-    for (const [claimId, dates] of dateLookup) {
-      if (dates.don || dates.dor) {
-        await prisma.claimSnapshot.updateMany({
-          where: {
-            claimId,
-            OR: [
-              { dateOfNotification: null },
-              { dateOfRegistration: null },
-            ],
-          },
-          data: {
-            ...(dates.don ? { dateOfNotification: dates.don } : {}),
-            ...(dates.dor ? { dateOfRegistration: dates.dor } : {}),
-          },
-        });
-      }
+    // Bulk cross-populate notification/registration dates onto ClaimSnapshots.
+    // Single UPDATE ... FROM (VALUES ...) replaces N serial round-trips.
+    const dateEntries = [...dateLookup.entries()].filter(([, d]) => d.don || d.dor);
+    if (dateEntries.length > 0) {
+      const dateValues = dateEntries.map(([claimId, d]) =>
+        Prisma.sql`(${claimId}, ${d.don ?? null}::date, ${d.dor ?? null}::date)`
+      );
+      await prisma.$executeRaw`
+        UPDATE claim_snapshots AS cs
+        SET
+          date_of_notification = COALESCE(cs.date_of_notification, v.don),
+          date_of_registration = COALESCE(cs.date_of_registration, v.dor)
+        FROM (VALUES ${Prisma.join(dateValues)}) AS v(claim_id, don, dor)
+        WHERE cs.claim_id = v.claim_id
+          AND (v.don IS NOT NULL OR v.dor IS NOT NULL)
+          AND (cs.date_of_notification IS NULL OR cs.date_of_registration IS NULL)
+      `;
     }
 
     const errored = rows.length - upserted;
