@@ -28,15 +28,12 @@ export async function GET() {
     let snapshotDate: Date | null = latestImport.periodStart ?? null;
 
     if (!snapshotDate) {
-      const result = await prisma.$queryRaw<{ snapshot_date: Date; cnt: bigint }[]>`
-        SELECT snapshot_date, COUNT(*) AS cnt
-        FROM claim_snapshots
-        WHERE import_run_id = ${latestImport.id}::uuid
-        GROUP BY snapshot_date
-        ORDER BY cnt DESC
-        LIMIT 1
-      `;
-      snapshotDate = result[0]?.snapshot_date ?? null;
+      const fallback = await prisma.claimSnapshot.findFirst({
+        where: { importRunId: latestImport.id },
+        orderBy: { snapshotDate: 'desc' },
+        select: { snapshotDate: true },
+      });
+      snapshotDate = fallback?.snapshotDate ?? null;
     }
 
     // Get all flags from the latest import run

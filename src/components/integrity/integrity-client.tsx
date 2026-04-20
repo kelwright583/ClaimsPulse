@@ -78,6 +78,7 @@ function SummaryTile({ flagType, count }: { flagType: string; count: number }) {
 
 export function IntegrityClient() {
   const [data, setData] = useState<IntegrityData | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [severityFilter, setSeverityFilter] = useState<'all' | 'alert' | 'warning'>('all');
   const [flagTypeFilter, setFlagTypeFilter] = useState<string>('all');
@@ -85,10 +86,14 @@ export function IntegrityClient() {
 
   const loadData = useCallback(() => {
     setLoading(true);
+    setError(null);
     fetch('/api/integrity')
       .then(r => r.json())
-      .then((d: IntegrityData) => setData(d))
-      .catch(() => {})
+      .then((d: IntegrityData & { error?: string }) => {
+        if (d.error) { setError(d.error); setData(null); }
+        else setData(d);
+      })
+      .catch(() => setError('Failed to reach the server'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -102,10 +107,14 @@ export function IntegrityClient() {
     );
   }
 
-  if (!data) {
+  if (error || !data) {
     return (
       <div className="bg-white border border-[#E8EEF8] rounded-xl p-8 text-center">
-        <p className="text-sm text-[#0D2761]/60">Failed to load integrity data.</p>
+        <p className="text-sm font-medium text-[#0D2761]">Failed to load integrity data</p>
+        {error && <p className="text-xs text-[#0D2761]/50 mt-1">{error}</p>}
+        <button onClick={loadData} className="mt-4 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: '#0D2761' }}>
+          Retry
+        </button>
       </div>
     );
   }
