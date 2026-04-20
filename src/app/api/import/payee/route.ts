@@ -40,6 +40,16 @@ export async function POST(request: Request) {
 
     const { rows } = parseResult;
 
+    // Deduplicate by (claimId, chequeNo) — last row wins, same as upsert behaviour.
+    // Required: PostgreSQL throws error 21000 if a single INSERT statement tries
+    // to update the same conflicting row twice.
+    const dedupMap = new Map<string, typeof rows[number]>();
+    for (const row of rows) {
+      const key = `${row.claimId}::${row.chequeNo ?? ''}`;
+      dedupMap.set(key, row);
+    }
+    const dedupedRows = Array.from(dedupMap.values());
+
     const importRun = await prisma.importRun.create({
       data: {
         reportType: 'PAYEE',
@@ -53,8 +63,8 @@ export async function POST(request: Request) {
     const SQL_CHUNK = 200;
     let upserted = 0;
 
-    for (let i = 0; i < rows.length; i += SQL_CHUNK) {
-      const chunk = rows.slice(i, i + SQL_CHUNK);
+    for (let i = 0; i < dedupedRows.length; i += SQL_CHUNK) {
+      const chunk = dedupedRows.slice(i, i + SQL_CHUNK);
 
       try {
         const values = chunk.map(r => Prisma.sql`(
@@ -161,7 +171,7 @@ export async function POST(request: Request) {
     // These dates are not in the daily claims report, but the payee report has them.
     // Group by claimId — keep the earliest date per claim across all payment rows.
     const dateLookup = new Map<string, { don: Date | null; dor: Date | null }>();
-    for (const row of rows) {
+    for (const row of dedupedRows) {
       const existing = dateLookup.get(row.claimId);
       const don = row.dateOfNotification ?? null;
       const dor = row.dateOfRegistration ?? null;
@@ -192,7 +202,7 @@ export async function POST(request: Request) {
       `;
     }
 
-    const errored = rows.length - upserted;
+    const errored = dedupedRows.length - upserted;
 
     await prisma.importRun.update({
       where: { id: importRun.id },
