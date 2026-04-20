@@ -123,10 +123,12 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
   const subProps = { role, userId, filters };
 
   function renderSubView() {
+    if (activeView === 'morning-brief') {
+      return <MorningBrief {...subProps} />;
+    }
     if (activeView === 'claims') {
       switch (activeSub) {
         case 'management-overview': return <ManagementOverviewClient />;
-        case 'morning-brief':       return <MorningBrief {...subProps} />;
         case 'portfolio-health':    return <PortfolioHealth {...subProps} />;
         case 'handler-performance': return <HandlerPerformance {...subProps} />;
         case 'broker-lens':         return <BrokerLens {...subProps} />;
@@ -159,8 +161,10 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
         <ViewSwitcher role={role} active={activeView} onChange={handleViewChange} />
       </div>
 
-      {/* Level 2 — sub-view tabs */}
-      <SubViewSwitcher view={activeView} active={activeSub} onChange={handleSubChange} />
+      {/* Level 2 — sub-view tabs (hidden for standalone views) */}
+      {activeView !== 'morning-brief' && (
+        <SubViewSwitcher view={activeView} active={activeSub} onChange={handleSubChange} />
+      )}
 
       {/* Level 3 — filter bar */}
       {subDef && subDef.filters.length > 0 && (

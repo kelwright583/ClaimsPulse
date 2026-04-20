@@ -1,6 +1,6 @@
 import type { UserRole } from '@/types/roles';
 
-export type TopView = 'claims' | 'my-work';
+export type TopView = 'morning-brief' | 'claims' | 'my-work';
 
 export interface SubViewDef {
   key: string;
@@ -40,6 +40,11 @@ export const DEFAULT_FILTERS: FilterState = {
 
 export const TOP_VIEWS: { key: TopView; label: string; roles: UserRole[] }[] = [
   {
+    key: 'morning-brief',
+    label: 'Morning Brief',
+    roles: ['HEAD_OF_CLAIMS', 'TEAM_LEADER'],
+  },
+  {
     key: 'claims',
     label: 'Management overview',
     roles: ['HEAD_OF_CLAIMS', 'TEAM_LEADER'],
@@ -52,19 +57,19 @@ export const TOP_VIEWS: { key: TopView; label: string; roles: UserRole[] }[] = [
 ];
 
 export const DEFAULT_VIEW: Record<UserRole, TopView> = {
-  SENIOR_MANAGEMENT: 'claims',
-  HEAD_OF_CLAIMS: 'claims',
-  TEAM_LEADER: 'claims',
+  SENIOR_MANAGEMENT: 'morning-brief',
+  HEAD_OF_CLAIMS: 'morning-brief',
+  TEAM_LEADER: 'morning-brief',
   CLAIMS_TECHNICIAN: 'my-work',
   TP_HANDLER: 'my-work',
   SALVAGE_HANDLER: 'my-work',
-  MAILBOX_ADMIN: 'claims',
-  UW_ANALYST: 'claims',
+  MAILBOX_ADMIN: 'morning-brief',
+  UW_ANALYST: 'morning-brief',
 };
 
 export const SUB_VIEWS: Record<TopView, SubViewDef[]> = {
+  'morning-brief': [],
   claims: [
-    { key: 'morning-brief',        label: 'Morning brief',        filters: [] },
     { key: 'management-overview',  label: 'Management overview',  filters: [] },
     { key: 'portfolio-health',     label: 'Portfolio health',     filters: ['dateRange', 'productLine', 'cause', 'status'] },
     { key: 'handler-performance',  label: 'Handler performance',  filters: ['handler', 'cause', 'dateRange'] },
