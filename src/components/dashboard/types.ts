@@ -64,8 +64,8 @@ export const DEFAULT_VIEW: Record<UserRole, TopView> = {
 
 export const SUB_VIEWS: Record<TopView, SubViewDef[]> = {
   claims: [
-    { key: 'management-overview',  label: 'Management overview',  filters: [] },
     { key: 'morning-brief',        label: 'Morning brief',        filters: [] },
+    { key: 'management-overview',  label: 'Management overview',  filters: [] },
     { key: 'portfolio-health',     label: 'Portfolio health',     filters: ['dateRange', 'productLine', 'cause', 'status'] },
     { key: 'handler-performance',  label: 'Handler performance',  filters: ['handler', 'cause', 'dateRange'] },
     { key: 'broker-lens',          label: 'Broker lens',          filters: ['broker', 'productLine', 'dateRange'] },
