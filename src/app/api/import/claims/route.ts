@@ -298,7 +298,7 @@ export async function POST(request: Request) {
           cash_lieu_os, glass_auth_os, tp_liability_os,
           total_os, total_incurred, section_sum_insured,
           notification_gap_days, reserve_utilisation_pct,
-          complexity_weight, delta_flags, is_sla_breach,
+          complexity_weight, delta_flags, is_tat_breach,
           days_in_current_status, days_open
         ) VALUES ${Prisma.join(values)}
         ON CONFLICT (claim_id, snapshot_date) DO UPDATE SET
@@ -353,7 +353,7 @@ export async function POST(request: Request) {
           reserve_utilisation_pct = EXCLUDED.reserve_utilisation_pct,
           complexity_weight = EXCLUDED.complexity_weight,
           delta_flags = EXCLUDED.delta_flags,
-          is_sla_breach = EXCLUDED.is_sla_breach,
+          is_tat_breach = EXCLUDED.is_tat_breach,
           days_in_current_status = EXCLUDED.days_in_current_status,
           days_open = EXCLUDED.days_open
       `;
@@ -384,7 +384,7 @@ export async function POST(request: Request) {
               cash_lieu_os, glass_auth_os, tp_liability_os,
               total_os, total_incurred, section_sum_insured,
               notification_gap_days, reserve_utilisation_pct,
-              complexity_weight, delta_flags, is_sla_breach,
+              complexity_weight, delta_flags, is_tat_breach,
               days_in_current_status, days_open
             ) VALUES (
               gen_random_uuid(),
@@ -418,7 +418,7 @@ export async function POST(request: Request) {
               total_os = EXCLUDED.total_os,
               total_incurred = EXCLUDED.total_incurred,
               delta_flags = EXCLUDED.delta_flags,
-              is_sla_breach = EXCLUDED.is_sla_breach,
+              is_tat_breach = EXCLUDED.is_tat_breach,
               days_in_current_status = EXCLUDED.days_in_current_status,
               days_open = EXCLUDED.days_open
           `;

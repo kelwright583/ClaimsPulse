@@ -117,7 +117,7 @@ export async function GET(_request: NextRequest) {
       SELECT
         handler,
         COUNT(*) FILTER (WHERE claim_status NOT IN ('Finalised', 'Cancelled', 'Repudiated')) AS open_count,
-        COUNT(*) FILTER (WHERE is_sla_breach = true) AS breach_count,
+        COUNT(*) FILTER (WHERE is_tat_breach = true) AS breach_count,
         MAX(snapshot_date) AS last_activity
       FROM claim_snapshots
       WHERE snapshot_date = ${snapshotDate}
