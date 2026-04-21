@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { UserRole } from '@/types/roles';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 interface TargetRow {
   id: string | null;
@@ -45,10 +46,8 @@ const METRIC_CONFIG: Record<
   },
 };
 
-// Current UW year: Oct 2025 starts UW year 2026
 function getCurrentUwYear(): number {
-  const now = new Date();
-  return now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
+  return getFyBoundaries().uwYear;
 }
 
 function formatUpdatedAt(iso: string | null): string {

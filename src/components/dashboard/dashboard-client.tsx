@@ -57,15 +57,22 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
   const activeSub = resolveSub(activeView);
 
   // ── Resolve filters from URL ─────────────────────────────────────────────
+  // Only string-valued FilterState fields are round-tripped via URL params here.
+  // Array/number/optional fields (productLines, uwYearNum, customStart, customEnd, dateWindow)
+  // are managed by FilterBar's own useSearchParams logic.
+  const STRING_FILTER_KEYS: (keyof FilterState)[] = [
+    'dateRange', 'productLine', 'handler', 'broker', 'cause',
+    'status', 'area', 'actionType', 'tatPosition', 'period', 'netGross', 'uwYear',
+  ];
+
   const filters: FilterState = useMemo(() => {
     const f = { ...DEFAULT_FILTERS };
-    const keys = Object.keys(DEFAULT_FILTERS) as (keyof FilterState)[];
-    for (const k of keys) {
+    for (const k of STRING_FILTER_KEYS) {
       const v = searchParams.get(k);
-      if (v !== null) (f as Record<string, string>)[k] = v;
+      if (v !== null) (f as unknown as Record<string, string>)[k] = v;
     }
     return f;
-  }, [searchParams]);
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── My Work handler selector ─────────────────────────────────────────────
   const [myWorkHandler, setMyWorkHandler] = useState<string>(fullName ?? '');
@@ -82,10 +89,9 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
     p.set('sub', sub);
     const merged = { ...DEFAULT_FILTERS, ...newFilters };
     if (keepDateRange) merged.dateRange = filters.dateRange;
-    const keys = Object.keys(DEFAULT_FILTERS) as (keyof FilterState)[];
-    for (const k of keys) {
+    for (const k of STRING_FILTER_KEYS) {
       const v = merged[k] as string;
-      if (v && v !== DEFAULT_FILTERS[k]) p.set(k, v);
+      if (v && v !== (DEFAULT_FILTERS[k] as string)) p.set(k, v);
     }
     return p.toString();
   }

@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import { Prisma } from '@prisma/client';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 const ALLOWED_ROLES = ['SENIOR_MANAGEMENT', 'HEAD_OF_CLAIMS'] as const;
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
       } else if (dateRange === 'last-3-months') {
         where.dateOfLoss = { gte: new Date(now.getFullYear(), now.getMonth() - 3, 1) };
       } else if (dateRange === 'ytd') {
-        const fyStart = now.getMonth() >= 9 ? new Date(now.getFullYear(), 9, 1) : new Date(now.getFullYear() - 1, 9, 1);
+        const { fyStart } = getFyBoundaries(now);
         where.dateOfLoss = { gte: fyStart };
       }
     }

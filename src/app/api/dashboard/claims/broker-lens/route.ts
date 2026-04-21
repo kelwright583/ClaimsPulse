@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 const ALLOWED_ROLES = ['HEAD_OF_CLAIMS', 'TEAM_LEADER'] as const;
 
@@ -27,10 +28,8 @@ function getDateRange(dateRange: string | null): { gte: Date; lte: Date } {
     return { gte: new Date(now.getFullYear(), now.getMonth() - 3, 1), lte: endOfMonth };
   }
   if (dateRange === 'ytd') {
-    const oct = now.getMonth() >= 9
-      ? new Date(now.getFullYear(), 9, 1)
-      : new Date(now.getFullYear() - 1, 9, 1);
-    return { gte: oct, lte: endOfMonth };
+    const { fyStart } = getFyBoundaries(now);
+    return { gte: fyStart, lte: endOfMonth };
   }
   return { gte: startOfMonth, lte: endOfMonth };
 }

@@ -2,19 +2,16 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 const ALLOWED_ROLES = ['SENIOR_MANAGEMENT', 'HEAD_OF_CLAIMS'] as const;
 
 function getFinancialYearStart(): Date {
-  const now = new Date();
-  return now.getMonth() >= 9
-    ? new Date(now.getFullYear(), 9, 1)
-    : new Date(now.getFullYear() - 1, 9, 1);
+  return getFyBoundaries().fyStart;
 }
 
-function monthsElapsedSince(from: Date): number {
-  const now = new Date();
-  return (now.getFullYear() - from.getFullYear()) * 12 + (now.getMonth() - from.getMonth()) + 1;
+function monthsElapsedSince(_from: Date): number {
+  return getFyBoundaries().currentMonthIndex + 1;
 }
 
 function getStatus(actual: number, target: number, lowerIsBetter: boolean): 'green' | 'amber' | 'red' {

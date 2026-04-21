@@ -12,7 +12,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "backfill:ages": "tsx prisma/scripts/backfill-ages.ts",
-    "backfill:reg-dates": "tsx prisma/scripts/backfill-registration-dates.ts"
+    "backfill:reg-dates": "tsx prisma/scripts/backfill-registration-dates.ts",
+    "test:fiscal": "tsx src/lib/__tests__/fiscal.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 const ALLOWED_ROLES = ['SENIOR_MANAGEMENT', 'HEAD_OF_CLAIMS'] as const;
 
@@ -47,11 +48,13 @@ export async function GET(request: NextRequest) {
     const totalIncurred = incurredAgg._sum.totalIncurred ? Number(incurredAgg._sum.totalIncurred) : null;
     const uwResult = totalNetWp !== null && totalIncurred !== null ? totalNetWp - totalIncurred : null;
 
-    // Reserve movement MTD
+    // Reserve movement MTD (using FY month window boundaries)
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const { currentMonthStart: monthStart, currentMonthEnd } = getFyBoundaries(now);
+    void currentMonthEnd;
+    // Previous month window: go back one bucket (22nd of two months ago → 21st of last month)
+    const prevMonthEnd = new Date(monthStart.getTime() - 86400000); // day before current window start
+    const prevMonthStart = new Date(prevMonthEnd.getFullYear(), prevMonthEnd.getMonth() - 1, 22);
 
     const currentMonthOs = await prisma.claimSnapshot.aggregate({
       where: { snapshotDate: { gte: monthStart } },
@@ -64,8 +67,9 @@ export async function GET(request: NextRequest) {
     const reserveMovementMtd = (currentMonthOs._sum.totalOs ? Number(currentMonthOs._sum.totalOs) : 0)
       - (prevMonthOs._sum.totalOs ? Number(prevMonthOs._sum.totalOs) : 0);
 
-    // Monthly trend (last 12 months)
-    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    // Monthly trend (last 12 FY month windows)
+    const { fyStart } = getFyBoundaries(now);
+    const twelveMonthsAgo = fyStart;
     const monthlyIncurredRaw = await prisma.$queryRaw<{ month: string; total_incurred: string }[]>`
       SELECT TO_CHAR(DATE_TRUNC('month', snapshot_date), 'YYYY-MM') AS month,
              SUM(total_incurred)::text AS total_incurred

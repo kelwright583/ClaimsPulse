@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 const ALLOWED_ROLES = ['SENIOR_MANAGEMENT', 'HEAD_OF_CLAIMS'] as const;
 
@@ -67,16 +68,11 @@ export async function GET(_request: NextRequest) {
     }
 
     // Projected YE NWP
+    const { fyStart, currentMonthIndex } = getFyBoundaries(now);
     const ytdNwp = monthlyNwpRaw
-      .filter(r => {
-        const fyStart = currentMonth >= 9 ? new Date(currentYear, 9, 1) : new Date(currentYear - 1, 9, 1);
-        return r.period_date >= fyStart;
-      })
+      .filter(r => r.period_date >= fyStart)
       .reduce((sum, r) => sum + parseFloat(r.net_wp ?? '0'), 0);
-    const monthsElapsed = (() => {
-      const fyStart = currentMonth >= 9 ? new Date(currentYear, 9, 1) : new Date(currentYear - 1, 9, 1);
-      return (currentYear - fyStart.getFullYear()) * 12 + (currentMonth - fyStart.getMonth()) + 1;
-    })();
+    const monthsElapsed = currentMonthIndex + 1;
     const projectedYeNwp = monthsElapsed > 0 ? (ytdNwp / monthsElapsed) * 12 : null;
 
     // Policy trajectory from PolicyCount table

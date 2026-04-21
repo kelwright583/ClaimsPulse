@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 const ALLOWED_ROLES = ['SENIOR_MANAGEMENT', 'HEAD_OF_CLAIMS'] as const;
 
@@ -28,9 +29,7 @@ interface ScenarioBody {
 function monthsUntilYearEnd(startingFrom: string): number {
   const start = new Date(startingFrom);
   const now = new Date();
-  const fyEnd = now.getMonth() >= 9
-    ? new Date(now.getFullYear() + 1, 8, 30)
-    : new Date(now.getFullYear(), 8, 30);
+  const { fyEnd } = getFyBoundaries(now);
   const months = (fyEnd.getFullYear() - start.getFullYear()) * 12 + (fyEnd.getMonth() - start.getMonth());
   return Math.max(0, months);
 }
@@ -86,8 +85,9 @@ export async function POST(request: NextRequest) {
 
       // Budget burn: estimate months until budget exhausted
       const now = new Date();
-      const fyStart = now.getMonth() >= 9 ? new Date(now.getFullYear(), 9, 1) : new Date(now.getFullYear() - 1, 9, 1);
-      const monthsElapsed = Math.max(1, (now.getFullYear() - fyStart.getFullYear()) * 12 + (now.getMonth() - fyStart.getMonth()) + 1);
+      const { fyStart, currentMonthIndex } = getFyBoundaries(now);
+      const monthsElapsed = Math.max(1, currentMonthIndex + 1);
+      void fyStart;
       const monthlyBurnRate = currentIncurred / monthsElapsed;
       const budget = lossRatioTarget && currentNwp ? (lossRatioTarget / 100) * currentNwp : null;
       const remainingBudget = budget ? budget - newTotalIncurred : null;

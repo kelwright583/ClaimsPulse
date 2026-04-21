@@ -1,4 +1,5 @@
 import type { UserRole } from '@/types/roles';
+import { getFyBoundaries } from '@/lib/fiscal';
 
 export type TopView = 'morning-brief' | 'claims' | 'my-work';
 
@@ -21,6 +22,12 @@ export interface FilterState {
   period: string;
   netGross: 'net' | 'gross';
   uwYear: string;
+  // New fields added in Prompt 1
+  dateWindow: 'fy_ytd' | 'mtd' | 'last_12m' | 'custom';
+  customStart?: string;
+  customEnd?: string;
+  productLines: string[];
+  uwYearNum: number;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -36,6 +43,12 @@ export const DEFAULT_FILTERS: FilterState = {
   period: 'monthly',
   netGross: 'net',
   uwYear: '',
+  // New fields
+  dateWindow: 'fy_ytd',
+  customStart: undefined,
+  customEnd: undefined,
+  productLines: [],
+  uwYearNum: getFyBoundaries().uwYear,
 };
 
 export const TOP_VIEWS: { key: TopView; label: string; roles: UserRole[] }[] = [
