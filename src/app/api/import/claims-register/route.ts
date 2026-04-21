@@ -70,6 +70,7 @@ export async function POST(request: Request) {
     for (let i = 0; i < toInsert.length; i += BATCH) {
       const batch = toInsert.slice(i, i + BATCH);
       const values = batch.map(r => Prisma.sql`(
+        gen_random_uuid(),
         ${importRun.id}::uuid,
         ${r.claimId},
         ${snapshotDate}::date,
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
 
       await prisma.$executeRaw`
         INSERT INTO claim_snapshots (
-          import_run_id, claim_id, snapshot_date,
+          id, import_run_id, claim_id, snapshot_date,
           handler, date_of_registration, date_of_loss,
           claim_status, secondary_status, cause,
           insured, broker, policy_number,
