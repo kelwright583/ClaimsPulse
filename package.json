@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "backfill:ages": "tsx prisma/scripts/backfill-ages.ts"
+    "backfill:ages": "tsx prisma/scripts/backfill-ages.ts",
+    "backfill:reg-dates": "tsx prisma/scripts/backfill-registration-dates.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
