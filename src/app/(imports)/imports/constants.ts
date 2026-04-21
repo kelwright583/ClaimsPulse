@@ -3,7 +3,8 @@ export type ReportType =
   | 'PAYEE'
   | 'REVENUE_ANALYSIS'
   | 'MOVEMENT_SUMMARY'
-  | 'CLAIMS_REGISTER';
+  | 'CLAIMS_REGISTER'
+  | 'BUDGET';
 
 export interface ImportTypeConfig {
   key: string;
@@ -325,5 +326,25 @@ export const IMPORT_TYPES: ImportTypeConfig[] = [
     ],
     successMessage:
       'Registration dates and catastrophe flags have been applied. Claim age calculations are updated.',
+  },
+  {
+    key: 'budget',
+    fileTypeKey: 'BUDGET',
+    title: 'Annual Budget (B2026 Sign-off)',
+    description:
+      'IFRS4 income-statement workbook. Populates GWP, gross claims, commission, and expenses budgets — both annual and per-month.',
+    frequency: 'On demand',
+    templateHref: '',
+    endpoint: '/api/import/budget',
+    requiredColumns: ['Total Year','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    allColumns: ['Gross written premium', 'Gross claims', 'Gross Earned Commission', 'Expenses'],
+    notes:
+      'Expects the "Inc Stm after all changes" sheet. Reads only four rows: GWP, Gross claims, Gross Earned Commission, Expenses.',
+    parserWarnings: [
+      'Only the Inc Stm after all changes sheet is parsed. Falls back to Income Statement IFRS4 with a warning.',
+      'Monthly values must sum to the annual total within R10 — mismatches raise a parse error.',
+    ],
+    successMessage:
+      'Budget has been saved. Strategic dashboard will now show actuals vs target.',
   },
 ];

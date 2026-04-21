@@ -23,6 +23,7 @@ const REPORT_TYPE_LABELS: Record<string, string> = {
   REVENUE_ANALYSIS: 'Revenue Analysis',
   MOVEMENT_SUMMARY: 'Movement Summary',
   CLAIMS_REGISTER: 'Claims Register',
+  BUDGET: 'Annual Budget',
 };
 
 function formatDate(iso: string): string {

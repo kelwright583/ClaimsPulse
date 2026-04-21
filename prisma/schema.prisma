@@ -74,6 +74,7 @@ enum ReportType {
   REVENUE_ANALYSIS
   MOVEMENT_SUMMARY
   CLAIMS_REGISTER
+  BUDGET
 
   @@map("report_type")
 }
@@ -425,7 +426,10 @@ model GeneratedReport {
 
 model Target {
   id           String   @id @default(uuid()) @db.Uuid
-  metricType   String   @map("metric_type") // 'loss_ratio' | 'net_wp' | 'policy_count'
+  // Valid metricType values:
+  //   Strategic:  'loss_ratio' | 'net_wp' | 'policy_count'
+  //   Budget:     'gwp_budget' | 'gross_claims_budget' | 'gross_commission_budget' | 'expenses_budget'
+  metricType   String   @map("metric_type")
   productLine  String?  @map("product_line") // null = aggregate
   uwYear       Int      @map("uw_year")
   annualTarget Decimal  @map("annual_target") @db.Decimal(18, 2)
@@ -435,6 +439,30 @@ model Target {
 
   @@unique([metricType, productLine, uwYear])
   @@map("targets")
+}
+
+// ── Monthly Budgets ───────────────────────────────────────────────────────────
+// Month-by-month breakdown of annual budget targets imported from the
+// IFRS4 income-statement workbook (SEB_B2026_sign-off_BV.xlsx).
+
+model MonthlyBudget {
+  id           String   @id @default(uuid()) @db.Uuid
+  uwYear       Int      @map("uw_year")
+  productLine  String?  @map("product_line")
+  metricType   String   @map("metric_type")
+  monthIndex   Int      @map("month_index")
+  monthLabel   String   @map("month_label")
+  budgetValue  Decimal  @map("budget_value") @db.Decimal(18, 2)
+  sourceFile   String?  @map("source_file")
+  importRunId  String?  @map("import_run_id") @db.Uuid
+  setBy        String?  @map("set_by") @db.Uuid
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([uwYear, productLine, metricType, monthIndex])
+  @@index([uwYear])
+  @@index([metricType])
+  @@map("monthly_budgets")
 }
 
 // ── Policy Counts ─────────────────────────────────────────────────────────────
