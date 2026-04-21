@@ -121,8 +121,9 @@ export async function POST(request: Request) {
     // This will always be null here; the payee route back-fills it on ClaimSnapshot rows.
     const notificationGapDays: null = null;
 
-    // daysOpen: claim age since DOL (best available in the claims report; payee import provides
-    // dateOfRegistration which would be more accurate, but that isn't in this file's data)
+    // daysOpen: computed from dateOfLoss here as the outstanding report has no registration date.
+    // recomputeClaimAges() runs after all upserts and corrects this using dateOfRegistration
+    // (from the CLAIMS_REGISTER import) wherever it is available.
     const daysOpen = row.dateOfLoss
       ? Math.floor((snapshotDate.getTime() - new Date(row.dateOfLoss).getTime()) / 86400000)
       : null;
@@ -455,6 +456,16 @@ export async function POST(request: Request) {
       where: { id: importRun.id },
       data: { errorsJson: { flagError: flagComputationError } },
     });
+  }
+
+  // Recompute daysOpen using dateOfRegistration (preferred) over dateOfLoss.
+  // The outstanding report only has dateOfLoss, so daysOpen written above may be
+  // wrong for claims that have a dateOfRegistration from the register import.
+  try {
+    const { recomputeClaimAges } = await import('@/lib/compute/recompute-claim-ages');
+    await recomputeClaimAges(rows.map(r => r.claimId), snapshotDate);
+  } catch (err) {
+    console.error('[claims-import] recomputeClaimAges failed (non-fatal):', err);
   }
 
   return Response.json({
