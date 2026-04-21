@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     // All prior snapshots for these claims (for daysInCurrentStatus)
     prisma.claimSnapshot.findMany({
       where: { claimId: { in: claimIds }, snapshotDate: { lte: snapshotDate } },
-      select: { claimId: true, secondaryStatus: true, snapshotDate: true },
+      select: { claimId: true, secondaryStatus: true, snapshotDate: true, dateOfRegistration: true },
       orderBy: { snapshotDate: 'asc' },
     }),
     // Existing snapshots for today (for create vs update counting)
@@ -83,19 +83,34 @@ export async function POST(request: Request) {
   const prevMap = new Map(previousSnapshots.map(s => [s.claimId, s]));
 
   // Earliest snapshot date per (claimId, secondaryStatus) — used for daysInCurrentStatus
+  // Also track the earliest known dateOfRegistration per claim (from any prior snapshot).
   const earliestMap = new Map<string, Date>();
+  const regDateMap = new Map<string, Date>();
   for (const s of priorSnapshotsForDays) {
     const key = `${s.claimId}::${s.secondaryStatus ?? ''}`;
     if (!earliestMap.has(key)) earliestMap.set(key, new Date(s.snapshotDate));
+    if (s.dateOfRegistration && !regDateMap.has(s.claimId)) {
+      regDateMap.set(s.claimId, new Date(s.dateOfRegistration));
+    }
   }
 
   const daysMap = new Map<string, number>();
   for (const row of rows) {
     const key = `${row.claimId}::${row.secondaryStatus ?? ''}`;
     const earliest = earliestMap.get(key);
-    if (earliest) {
-      daysMap.set(row.claimId, Math.floor((snapshotDate.getTime() - earliest.getTime()) / 86400000));
-    }
+    const fromHistory = earliest
+      ? Math.floor((snapshotDate.getTime() - earliest.getTime()) / 86400000)
+      : null;
+    // Use dateOfRegistration as a floor: a claim cannot have spent less time in
+    // its current status than its total age since registration. This corrects for
+    // short snapshot histories where the claim was already in this status before
+    // the first import.
+    const regDate = regDateMap.get(row.claimId);
+    const fromReg = regDate
+      ? Math.floor((snapshotDate.getTime() - regDate.getTime()) / 86400000)
+      : null;
+    const best = Math.max(fromHistory ?? 0, fromReg ?? 0);
+    if (best > 0) daysMap.set(row.claimId, best);
   }
 
   const existingClaimIds = new Set(existingSnapshots.map(s => s.claimId));
