@@ -91,6 +91,7 @@ function getPillarNav(pillar: PillarKey, role: UserRole): NavItem[] {
         { label: 'Claims TAT Matrix', href: '/settings/tat-matrix', Icon: Clock,      show: p.canConfigureSla },
         { label: 'Targets',        href: '/settings/targets',         Icon: TrendingUp, show: p.canConfigureSla },
         { label: 'Handler Targets', href: '/settings/handler-targets', Icon: Users,      show: p.canConfigureSla },
+        { label: 'Product Lines',  href: '/settings/product-lines',  Icon: Briefcase,  show: p.canConfigureSla },
         { label: 'Users',          href: '/admin/users',              Icon: UserCog,    show: p.canManageUsers },
       ];
     case 'imports':
