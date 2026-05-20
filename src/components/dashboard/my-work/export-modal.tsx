@@ -287,7 +287,7 @@ export function ExportModal({ isOpen, onClose, currentHandler, role }: ExportMod
               </p>
               <div className="grid grid-cols-2 gap-1.5">
                 {[
-                  { label: 'Weekly Delta', color: 'bg-sky-100 text-sky-700' },
+                  { label: 'Monthly Delta', color: 'bg-sky-100 text-sky-700' },
                   { label: "Today's Action Items", color: 'bg-blue-100 text-blue-700' },
                   { label: 'Assessor Appointed', color: 'bg-teal-100 text-teal-700' },
                   { label: 'My Portfolio', color: 'bg-indigo-100 text-indigo-700' },

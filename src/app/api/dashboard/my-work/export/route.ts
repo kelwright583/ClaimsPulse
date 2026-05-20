@@ -938,14 +938,14 @@ function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerDat
 }
 
 function buildWeeklyDeltaSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
-  const ws = wb.addWorksheet('Weekly Delta');
+  const ws = wb.addWorksheet('Monthly Delta');
   const NC = 6;
   [21, 21, 21, 21, 21, 21].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const sd = dataSet[0]?.snapshotDate;
   const label = isGroup
-    ? `Weekly Delta  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
-    : `Weekly Delta  —  ${dataSet[0]?.handler ?? ''}`;
+    ? `Monthly Delta  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
+    : `Monthly Delta  —  ${dataSet[0]?.handler ?? ''}`;
 
   addMergedRow(ws, `   ${label}`, NC,
     { bg: A.navy, fontColor: A.white, bold: true, size: 14 }, 32);
