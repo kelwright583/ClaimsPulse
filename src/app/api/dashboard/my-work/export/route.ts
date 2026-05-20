@@ -165,6 +165,13 @@ function tatLabel(pos: string): string {
   return 'ON TRACK';
 }
 
+function lastActionedStr(days: number | null): string {
+  if (days === null) return '—';
+  if (days === 0) return 'Today';
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
+}
+
 // ── Data interfaces ───────────────────────────────────────────────────────────
 type Priority = 'critical' | 'urgent' | 'standard';
 type TatPos = 'breach' | 'at-risk' | 'on-track';
@@ -294,10 +301,8 @@ async function computeCsScore(handler: string | null, snapshotDate: Date): Promi
 }
 
 // ── Data fetcher per handler ──────────────────────────────────────────────────
-function isPendingFinalisation(claimStatus: string | null, secondaryStatus: string | null): boolean {
-  const st = (claimStatus ?? '').toLowerCase();
-  const ss = (secondaryStatus ?? '').toLowerCase();
-  return st.includes('processing') && ss.includes('claim settled');
+function isPendingFinalisation(_claimStatus: string | null, secondaryStatus: string | null): boolean {
+  return (secondaryStatus ?? '').toLowerCase().includes('claim settled');
 }
 
 async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<HandlerData> {
@@ -473,8 +478,8 @@ function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup:
   const NC = isGroup ? 8 : 7;
 
   const widths = isGroup
-    ? [22, 15, 28, 26, 17, 7, 12, 13]
-    : [15, 28, 26, 17, 7, 12, 13];
+    ? [22, 15, 28, 26, 17, 14, 12, 13]
+    : [15, 28, 26, 17, 14, 12, 13];
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const sd = dataSet[0]?.snapshotDate;
@@ -490,8 +495,8 @@ function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup:
   addSpacer(ws, NC, 8);
 
   const headers = isGroup
-    ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT']
-    : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT'];
+    ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Last Actioned', 'Priority', 'TAT']
+    : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Last Actioned', 'Priority', 'TAT'];
 
   // ── Section writer ──
   function writeSection(
@@ -532,18 +537,18 @@ function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup:
             { v: item.secondaryStatus ?? '—',      opts: { bg, fontColor: rowFont,              border: borderArgb } },
             { v: item.cause ?? '—',                opts: { bg, fontColor: rowFont,              border: borderArgb } },
             { v: zarStr(item.totalIncurred),        opts: { bg, fontColor: currencyFont, bold: true, h: 'right', border: borderArgb } },
-            { v: item.daysInStatus ?? '—',         opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
-            { v: item.priority.toUpperCase(),      opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
-            { v: tatLabel(item.tatPosition),       opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: borderArgb } },
+            { v: lastActionedStr(item.daysInStatus), opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: item.priority.toUpperCase(),       opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: tatLabel(item.tatPosition),        opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: borderArgb } },
           ]
         : [
             { v: item.claimId,                     opts: { bg, fontColor: rowFont, bold: true,  border: borderArgb } },
             { v: item.secondaryStatus ?? '—',      opts: { bg, fontColor: rowFont,              border: borderArgb } },
             { v: item.cause ?? '—',                opts: { bg, fontColor: rowFont,              border: borderArgb } },
             { v: zarStr(item.totalIncurred),        opts: { bg, fontColor: currencyFont, bold: true, h: 'right', border: borderArgb } },
-            { v: item.daysInStatus ?? '—',         opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
-            { v: item.priority.toUpperCase(),      opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
-            { v: tatLabel(item.tatPosition),       opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: borderArgb } },
+            { v: lastActionedStr(item.daysInStatus), opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: item.priority.toUpperCase(),       opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: tatLabel(item.tatPosition),        opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: borderArgb } },
           ];
 
       colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));

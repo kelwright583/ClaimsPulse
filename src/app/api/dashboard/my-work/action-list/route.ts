@@ -42,10 +42,11 @@ export async function GET(request: NextRequest) {
     });
     const handlers = handlerRows.map(r => r.handler!).filter(Boolean);
 
-    // Fetch open claims for the handler
+    // Fetch open claims for the handler — exclude Claim Settled (those belong in Pending Finalisation)
     const where: any = {
       snapshotDate,
       claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
+      NOT: { secondaryStatus: { contains: 'Claim Settled', mode: 'insensitive' } },
     };
     if (handlerParam) where.handler = handlerParam;
 
