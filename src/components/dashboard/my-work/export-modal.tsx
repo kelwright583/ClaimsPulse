@@ -197,7 +197,7 @@ export function ExportModal({ isOpen, onClose, currentHandler, role }: ExportMod
             <div>
               <h2 className="text-white font-bold text-base">Export Daily Reports</h2>
               <p className="text-white/60 text-xs mt-0.5">
-                Excel workbook · 4 sheets per report
+                Excel workbook · 5 sheets per report
               </p>
             </div>
           </div>
@@ -287,6 +287,7 @@ export function ExportModal({ isOpen, onClose, currentHandler, role }: ExportMod
               </p>
               <div className="grid grid-cols-2 gap-1.5">
                 {[
+                  { label: 'Weekly Delta', color: 'bg-sky-100 text-sky-700' },
                   { label: "Today's Action Items", color: 'bg-blue-100 text-blue-700' },
                   { label: 'Assessor Appointed', color: 'bg-teal-100 text-teal-700' },
                   { label: 'My Portfolio', color: 'bg-indigo-100 text-indigo-700' },

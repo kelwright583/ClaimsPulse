@@ -228,12 +228,28 @@ interface AssessorAppointedRow {
   overdueDays: number | null;
 }
 
+interface WeeklyDeltaData {
+  weekStartDate: Date | null;
+  periodDays: number;
+  newClaims: number;
+  finalisedClaims: number;
+  statusChanges: number;
+  avgClaimsPerDay: number;
+  avgStatusChangesPerDay: number;
+  totalOsLatest: number;
+  totalOsWeekAgo: number;
+  valueChangePct: number | null;
+  openClaimsLatest: number;
+  openClaimsWeekAgo: number;
+}
+
 interface HandlerData {
   handler: string;
   snapshotDate: Date;
   actionItems: ActionItem[];
   pendingFinalisation: ActionItem[];
   assessorAppointed: AssessorAppointedRow[];
+  weeklyDelta: WeeklyDeltaData;
   portfolioStats: { openClaims: number; totalOutstanding: number; tatBreaches: number; activeDelays: number };
   portfolioClaims: PortfolioClaimRow[];
   csScore: CsScoreResult | null;
@@ -457,6 +473,63 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
     }),
   );
 
+  // ── Weekly delta ─────────────────────────────────────────────────────────────
+  const weekAgoDateRow = await prisma.claimSnapshot.findFirst({
+    where: { snapshotDate: { lte: new Date(snapshotDate.getTime() - 6 * 86400000) }, ...hw },
+    orderBy: { snapshotDate: 'desc' },
+    select: { snapshotDate: true },
+  });
+  const weekAgoDate = weekAgoDateRow?.snapshotDate ?? null;
+
+  const [latestAllSnaps, weekAgoSnaps] = await Promise.all([
+    prisma.claimSnapshot.findMany({
+      where: { snapshotDate, ...hw },
+      select: { claimId: true, secondaryStatus: true, totalOs: true, claimStatus: true },
+    }),
+    weekAgoDate
+      ? prisma.claimSnapshot.findMany({
+          where: { snapshotDate: weekAgoDate, ...hw },
+          select: { claimId: true, secondaryStatus: true, totalOs: true, claimStatus: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const weekAgoIds = new Set(weekAgoSnaps.map(s => s.claimId));
+  const weekAgoMap = new Map(weekAgoSnaps.map(s => [s.claimId, s]));
+  const closedSt = ['Finalised', 'Cancelled', 'Repudiated'];
+  const isOpen = (cs: string | null) => !closedSt.includes(cs ?? '');
+
+  const wNewClaims = latestAllSnaps.filter(s => !weekAgoIds.has(s.claimId)).length;
+  const wFinalised = latestAllSnaps.filter(s => {
+    const prev = weekAgoMap.get(s.claimId);
+    return !isOpen(s.claimStatus) && prev !== undefined && isOpen(prev.claimStatus);
+  }).length;
+  const wStatusChanges = latestAllSnaps.filter(s => {
+    const prev = weekAgoMap.get(s.claimId);
+    return prev !== undefined && prev.secondaryStatus !== s.secondaryStatus;
+  }).length;
+  const wOsNow  = latestAllSnaps.filter(s => isOpen(s.claimStatus)).reduce((sum, s) => sum + (s.totalOs ? Number(s.totalOs) : 0), 0);
+  const wOsPrev = weekAgoSnaps.filter(s => isOpen(s.claimStatus)).reduce((sum, s) => sum + (s.totalOs ? Number(s.totalOs) : 0), 0);
+  const wOpenNow  = latestAllSnaps.filter(s => isOpen(s.claimStatus)).length;
+  const wOpenPrev = weekAgoSnaps.filter(s => isOpen(s.claimStatus)).length;
+  const wDays = weekAgoDate ? Math.max(1, Math.round((snapshotDate.getTime() - weekAgoDate.getTime()) / 86400000)) : 7;
+  const r1w = (n: number) => Math.round(n * 10) / 10;
+
+  const weeklyDelta: WeeklyDeltaData = {
+    weekStartDate: weekAgoDate,
+    periodDays: wDays,
+    newClaims: wNewClaims,
+    finalisedClaims: wFinalised,
+    statusChanges: wStatusChanges,
+    avgClaimsPerDay: r1w(wNewClaims / wDays),
+    avgStatusChangesPerDay: r1w(wStatusChanges / wDays),
+    totalOsLatest: wOsNow,
+    totalOsWeekAgo: wOsPrev,
+    valueChangePct: wOsPrev > 0 ? r1w((wOsNow - wOsPrev) / wOsPrev * 100) : null,
+    openClaimsLatest: wOpenNow,
+    openClaimsWeekAgo: wOpenPrev,
+  };
+
   return {
     handler, snapshotDate, actionItems, pendingFinalisation, assessorAppointed,
     portfolioStats: {
@@ -465,7 +538,7 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
       tatBreaches: tatBreachCount,
       activeDelays: activeDelaysCount,
     },
-    portfolioClaims, csScore, tatBreaches, notificationGap, weeklyTrend,
+    portfolioClaims, csScore, tatBreaches, notificationGap, weeklyTrend, weeklyDelta,
   };
 }
 
@@ -859,12 +932,157 @@ function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerDat
   }
 }
 
+function buildWeeklyDeltaSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+  const ws = wb.addWorksheet('Weekly Delta');
+  const NC = 6;
+  [21, 21, 21, 21, 21, 21].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  const sd = dataSet[0]?.snapshotDate;
+  const label = isGroup
+    ? `Weekly Delta  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
+    : `Weekly Delta  —  ${dataSet[0]?.handler ?? ''}`;
+
+  addMergedRow(ws, `   ${label}`, NC,
+    { bg: A.navy, fontColor: A.white, bold: true, size: 14 }, 32);
+
+  // ── Inner helpers ──
+  function cardLabelRow(cards: Array<{ label: string; bg: string; fg: string }>): void {
+    const row = ws.addRow([]);
+    row.height = 18;
+    cards.forEach((c, i) => {
+      const col = i * 2 + 1;
+      const cell = row.getCell(col);
+      cell.value = c.label;
+      cell.fill = sf(c.bg);
+      cell.font = font(true, 8, c.fg) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+      row.getCell(col + 1).fill = sf(c.bg);
+      ws.mergeCells(row.number, col, row.number, col + 1);
+    });
+  }
+
+  function cardValueRow(cards: Array<{ value: string; bg: string; fg: string; size?: number }>): void {
+    const row = ws.addRow([]);
+    row.height = 44;
+    cards.forEach((c, i) => {
+      const col = i * 2 + 1;
+      const cell = row.getCell(col);
+      cell.value = c.value;
+      cell.fill = sf(c.bg);
+      cell.font = font(true, c.size ?? 24, c.fg) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+      cell.border = tb(A.border) as ExcelJS.Borders;
+      row.getCell(col + 1).fill = sf(c.bg);
+      row.getCell(col + 1).border = tb(A.border) as ExcelJS.Borders;
+      ws.mergeCells(row.number, col, row.number, col + 1);
+    });
+  }
+
+  function cardSubRow(subs: string[]): void {
+    const row = ws.addRow([]);
+    row.height = 15;
+    subs.forEach((s, i) => {
+      const col = i * 2 + 1;
+      const cell = row.getCell(col);
+      cell.value = s;
+      cell.fill = sf(A.offWhite);
+      cell.font = font(false, 8, A.gray, true) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+      row.getCell(col + 1).fill = sf(A.offWhite);
+      ws.mergeCells(row.number, col, row.number, col + 1);
+    });
+  }
+
+  for (const d of dataSet) {
+    const delta = d.weeklyDelta;
+    const fromLabel = delta.weekStartDate
+      ? `${dateStr(delta.weekStartDate)} → ${dateStr(d.snapshotDate)}`
+      : `${dateStr(d.snapshotDate)}  (no prior snapshot found)`;
+
+    addMergedRow(ws,
+      `   Period: ${fromLabel}  ·  ${delta.periodDays}-day comparison`,
+      NC, { bg: A.sectionBg, fontColor: A.gray, bold: false, size: 9, italic: true }, 14);
+
+    if (isGroup) {
+      addSpacer(ws, NC, 6);
+      addMergedRow(ws, `   Handler: ${d.handler}`, NC,
+        { bg: A.charcoal, fontColor: A.white, bold: true, size: 11 }, 26);
+    }
+    addSpacer(ws, NC, 8);
+
+    // ── Row 1: New Claims | Finalised | Status Changes ──
+    cardLabelRow([
+      { label: 'NEW CLAIMS REGISTERED',  bg: A.navy,      fg: A.offWhite },
+      { label: 'CLAIMS FINALISED',       bg: A.darkGreen, fg: A.white    },
+      { label: 'STATUS CHANGES',         bg: A.teal,      fg: A.white    },
+    ]);
+    cardValueRow([
+      { value: String(delta.newClaims),      bg: A.sectionBg,  fg: A.navy      },
+      { value: String(delta.finalisedClaims), bg: A.lightGreen, fg: A.darkGreen },
+      { value: String(delta.statusChanges),  bg: A.lightTeal,  fg: A.teal      },
+    ]);
+    cardSubRow([
+      `new claims entered the portfolio`,
+      `claims closed in the period`,
+      `secondary status updates`,
+    ]);
+
+    addSpacer(ws, NC, 8);
+
+    // ── Row 2: Avg Claims/Day | Avg Status Changes/Day | Open Portfolio ──
+    const openDiff = delta.openClaimsLatest - delta.openClaimsWeekAgo;
+    const openDiffStr = openDiff === 0 ? 'no change' : `${openDiff > 0 ? '+' : ''}${openDiff} vs last week`;
+    cardLabelRow([
+      { label: 'AVG NEW CLAIMS / DAY',       bg: A.blue,       fg: A.white },
+      { label: 'AVG STATUS CHANGES / DAY',   bg: A.teal,       fg: A.white },
+      { label: 'OPEN PORTFOLIO',             bg: A.charcoal,   fg: A.white },
+    ]);
+    cardValueRow([
+      { value: String(delta.avgClaimsPerDay),         bg: A.sectionBg,   fg: A.navy,      size: 22 },
+      { value: String(delta.avgStatusChangesPerDay),  bg: A.lightTeal,   fg: A.teal,      size: 22 },
+      { value: String(delta.openClaimsLatest),        bg: A.offWhite,    fg: A.charcoal,  size: 22 },
+    ]);
+    cardSubRow([
+      `over ${delta.periodDays}-day period`,
+      `over ${delta.periodDays}-day period`,
+      openDiffStr,
+    ]);
+
+    addSpacer(ws, NC, 8);
+
+    // ── Row 3: Total OS Now | Total OS Week Ago | Value Change % ──
+    const vcPct = delta.valueChangePct;
+    const vcStr = vcPct === null ? '—' : `${vcPct >= 0 ? '+' : ''}${vcPct}%`;
+    const vcBg  = vcPct === null ? A.offWhite : vcPct > 0 ? A.lightRed    : A.lightGreen;
+    const vcFg  = vcPct === null ? A.gray     : vcPct > 0 ? A.darkRed     : A.darkGreen;
+    const vcLabelBg = vcPct === null ? A.darkGray : vcPct > 0 ? A.red     : A.darkGreen;
+    cardLabelRow([
+      { label: 'TOTAL OUTSTANDING — NOW',       bg: A.navy,      fg: A.white },
+      { label: 'TOTAL OUTSTANDING — WEEK AGO',  bg: A.darkGray,  fg: A.white },
+      { label: 'PORTFOLIO VALUE CHANGE',        bg: vcLabelBg,   fg: A.white },
+    ]);
+    cardValueRow([
+      { value: zarStr(delta.totalOsLatest),  bg: A.sectionBg, fg: A.navy,  size: 16 },
+      { value: zarStr(delta.totalOsWeekAgo), bg: A.offWhite,  fg: A.gray,  size: 16 },
+      { value: vcStr,                        bg: vcBg,        fg: vcFg,    size: 22 },
+    ]);
+    cardSubRow([
+      `current open portfolio value`,
+      `open portfolio ${delta.periodDays} days ago`,
+      vcPct === null ? 'no comparison data' : vcPct > 0 ? 'outstanding increased' : 'outstanding decreased',
+    ]);
+
+    addSpacer(ws, NC, isGroup ? 16 : 10);
+  }
+}
+
 function buildWorkbook(dataSet: HandlerData[], isGroup: boolean): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'SEB Hub';
   wb.created = new Date();
   wb.modified = new Date();
 
+  buildWeeklyDeltaSheet(wb, dataSet, isGroup);
   buildActionSheet(wb, dataSet, isGroup);
   buildAssessorAppointedSheet(wb, dataSet, isGroup);
   buildPortfolioSheet(wb, dataSet, isGroup);
