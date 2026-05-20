@@ -65,18 +65,32 @@ export async function GET(request: NextRequest) {
 
     const claimIds = snapshots.map(s => s.claimId);
 
-    // SLA configs
-    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
-    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
+    // Previous snapshot date for status-change detection
+    const prevDateRow = await prisma.claimSnapshot.findFirst({
+      where: { snapshotDate: { lt: snapshotDate } },
+      orderBy: { snapshotDate: 'desc' },
+      select: { snapshotDate: true },
+    });
 
-    // Acknowledged delays (active)
-    const overdueDelays = claimIds.length > 0
-      ? await prisma.acknowledgedDelay.findMany({
-          where: { claimId: { in: claimIds }, isActive: true },
-          select: { claimId: true, isOverdue: true, expectedDate: true },
-        })
-      : [];
+    const [tatConfigs, overdueDelays, prevSnaps] = await Promise.all([
+      prisma.tatConfig.findMany({ where: { isActive: true } }),
+      claimIds.length > 0
+        ? prisma.acknowledgedDelay.findMany({
+            where: { claimId: { in: claimIds }, isActive: true },
+            select: { claimId: true, isOverdue: true, expectedDate: true },
+          })
+        : Promise.resolve([]),
+      prevDateRow && claimIds.length > 0
+        ? prisma.claimSnapshot.findMany({
+            where: { snapshotDate: prevDateRow.snapshotDate, claimId: { in: claimIds } },
+            select: { claimId: true, secondaryStatus: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
     const delayMap = new Map(overdueDelays.map(d => [d.claimId, d]));
+    const prevStatusMap = new Map(prevSnaps.map(p => [p.claimId, p.secondaryStatus]));
 
     const items = snapshots.map(s => {
       const tatConfig = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;
@@ -96,6 +110,12 @@ export async function GET(request: NextRequest) {
         tatPosition = 'at-risk';
       }
 
+      const lastActionedDate = s.daysInCurrentStatus !== null && s.daysInCurrentStatus !== undefined
+        ? new Date(snapshotDate.getTime() - s.daysInCurrentStatus * 86400000).toISOString().split('T')[0]
+        : null;
+      const prevSecondaryStatus = prevStatusMap.has(s.claimId) ? (prevStatusMap.get(s.claimId) ?? null) : null;
+      const statusChanged = prevStatusMap.has(s.claimId) && prevSecondaryStatus !== s.secondaryStatus;
+
       return {
         claimId: s.claimId,
         secondaryStatus: s.secondaryStatus,
@@ -107,6 +127,9 @@ export async function GET(request: NextRequest) {
         tatPosition,
         hasOverdueDelay: delay?.isOverdue ?? false,
         expectedDate: delay?.expectedDate ? delay.expectedDate.toISOString().split('T')[0] : null,
+        lastActionedDate,
+        statusChanged,
+        previousSecondaryStatus: statusChanged ? prevSecondaryStatus : null,
       };
     });
 

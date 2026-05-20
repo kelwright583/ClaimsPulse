@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle, RefreshCw } from 'lucide-react';
 import type { UserRole } from '@/types/roles';
 import type { FilterState } from '@/components/dashboard/types';
 
@@ -25,6 +25,9 @@ interface ActionItem {
   tatPosition: 'breach' | 'at-risk' | 'on-track';
   hasOverdueDelay: boolean;
   expectedDate: string | null;
+  lastActionedDate: string | null;
+  statusChanged: boolean;
+  previousSecondaryStatus: string | null;
 }
 
 interface ActionListData {
@@ -72,6 +75,13 @@ function HandlerSelector({
   );
 }
 
+function lastActionedLabel(daysInStatus: number | null): string {
+  if (daysInStatus === null) return '—';
+  if (daysInStatus === 0) return 'Actioned today';
+  if (daysInStatus === 1) return 'Last actioned yesterday';
+  return `Last actioned ${daysInStatus} days ago`;
+}
+
 function ItemCard({ item }: { item: ActionItem }) {
   const isCritical = item.priority === 'critical' && item.tatPosition === 'breach';
   const isUrgent = item.priority === 'urgent' || item.hasOverdueDelay;
@@ -89,13 +99,20 @@ function ItemCard({ item }: { item: ActionItem }) {
     ? 'text-[#F5A800]'
     : 'text-[#1E5BC6]';
 
+  const lastActionedColor =
+    item.daysInStatus === null ? 'text-[#6B7280]'
+    : item.daysInStatus === 0 ? 'text-[#16A34A] font-medium'
+    : item.daysInStatus <= 2 ? 'text-[#6B7280]'
+    : item.daysInStatus <= 5 ? 'text-[#F5A800] font-medium'
+    : 'text-red-500 font-medium';
+
   return (
     <div
       className={`bg-white border border-[#E8EEF8] rounded-lg p-3 mb-1.5 border-l-[3px] ${borderColor}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          {/* Row 1 */}
+          {/* Row 1: claim ID + secondary status */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <Icon className={`w-4 h-4 flex-shrink-0 ${iconColor}`} strokeWidth={2} />
             <span className="text-[#0D2761] font-semibold text-sm">{item.claimId}</span>
@@ -105,17 +122,23 @@ function ItemCard({ item }: { item: ActionItem }) {
                 <span className="text-[#6B7280] text-sm">{item.secondaryStatus}</span>
               </>
             )}
-            {item.daysInStatus !== null && (
-              <>
-                <span className="text-[#6B7280] text-sm">—</span>
-                <span className="text-[#6B7280] text-sm">{item.daysInStatus} days</span>
-              </>
+            {item.statusChanged && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#EEF2FF] text-[#4F46E5] text-[10px] font-semibold rounded-full ml-1">
+                <RefreshCw className="w-2.5 h-2.5" strokeWidth={2.5} />
+                Status updated
+              </span>
             )}
           </div>
-          {/* Row 2 */}
+          {/* Row 2: cause + value */}
           <div className="mt-0.5 text-xs text-[#6B7280]">
-            Insured: {item.insured ?? '—'} | {item.cause ?? '—'} |{' '}
-            {formatZAR(item.totalIncurred)}
+            {item.cause ?? '—'} | {formatZAR(item.totalIncurred)}
+          </div>
+          {/* Row 3: last actioned + status change history */}
+          <div className={`mt-0.5 text-xs ${lastActionedColor}`}>
+            {lastActionedLabel(item.daysInStatus)}
+            {item.statusChanged && item.previousSecondaryStatus && (
+              <span className="text-[#6B7280] font-normal"> · was: {item.previousSecondaryStatus}</span>
+            )}
           </div>
           {/* Overdue delay row */}
           {item.hasOverdueDelay && (

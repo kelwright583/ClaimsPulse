@@ -210,11 +210,21 @@ interface TatBreachRow {
   count: number;
 }
 
+interface AssessorAppointedRow {
+  claimId: string;
+  handler: string | null;
+  cause: string | null;
+  daysInStatus: number | null;
+  tatMaxDays: number | null;
+  overdueDays: number | null;
+}
+
 interface HandlerData {
   handler: string;
   snapshotDate: Date;
   actionItems: ActionItem[];
   pendingFinalisation: ActionItem[];
+  assessorAppointed: AssessorAppointedRow[];
   portfolioStats: { openClaims: number; totalOutstanding: number; tatBreaches: number; activeDelays: number };
   portfolioClaims: PortfolioClaimRow[];
   csScore: CsScoreResult | null;
@@ -342,6 +352,19 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
   const pendingFinalisation = allItems.filter(i => isPendingFinalisation(i.claimStatus, i.secondaryStatus));
   const actionItems = allItems.filter(i => !isPendingFinalisation(i.claimStatus, i.secondaryStatus));
 
+  // Assessor Appointed claims — days in status vs TAT limit
+  const assessorTatKey = [...slaMap.keys()].find(k => k.toLowerCase().includes('assessor appointed'));
+  const assessorTatMaxDays = assessorTatKey ? (slaMap.get(assessorTatKey)?.maxDays ?? null) : null;
+  const assessorAppointed: AssessorAppointedRow[] = snapshots
+    .filter(s => (s.secondaryStatus ?? '').toLowerCase().includes('assessor appointed'))
+    .map(s => {
+      const days = s.daysInCurrentStatus ?? null;
+      const overdue = days !== null && assessorTatMaxDays !== null && days > assessorTatMaxDays
+        ? days - assessorTatMaxDays : null;
+      return { claimId: s.claimId, handler: s.handler, cause: s.cause, daysInStatus: days, tatMaxDays: assessorTatMaxDays, overdueDays: overdue };
+    })
+    .sort((a, b) => (b.daysInStatus ?? 0) - (a.daysInStatus ?? 0));
+
   const portWhere = { snapshotDate, claimStatus: excl, ...hw };
   const [openCount, agg, tatBreachCount, portClaims] = await Promise.all([
     prisma.claimSnapshot.count({ where: portWhere }),
@@ -428,7 +451,7 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
   );
 
   return {
-    handler, snapshotDate, actionItems, pendingFinalisation,
+    handler, snapshotDate, actionItems, pendingFinalisation, assessorAppointed,
     portfolioStats: {
       openClaims: openCount,
       totalOutstanding: agg._sum.totalOs ? Number(agg._sum.totalOs) : 0,
@@ -563,214 +586,83 @@ function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup:
   }
 }
 
-function buildCsTatSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
-  const ws = wb.addWorksheet('CS & TAT Health');
-  const NC = 8;
-  [30, 14, 30, 14, 30, 14, 14, 14].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+function buildAssessorAppointedSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+  const ws = wb.addWorksheet('Assessor Appointed');
+  const NC = isGroup ? 6 : 5;
+  const widths = isGroup
+    ? [22, 15, 26, 14, 13, 15]
+    : [15, 26, 14, 13, 15];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const sd = dataSet[0]?.snapshotDate;
+  const totalCount = dataSet.reduce((s, d) => s + d.assessorAppointed.length, 0);
   const label = isGroup
-    ? `CS & TAT Health  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
-    : `CS & TAT Health  —  ${dataSet[0]?.handler ?? ''}`;
+    ? `Assessor Appointed  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
+    : `Assessor Appointed  —  ${dataSet[0]?.handler ?? ''}`;
 
   addMergedRow(ws, `   ${label}`, NC,
     { bg: A.teal, fontColor: A.white, bold: true, size: 14 }, 32);
-  addMergedRow(ws, `   Generated: ${sd ? dateStr(sd) : '—'}  ·  CS Score is out of 100 (4 components × 25 points each)`,
+  addMergedRow(ws,
+    `   Generated: ${sd ? dateStr(sd) : '—'}  ·  ${totalCount} claim${totalCount !== 1 ? 's' : ''} with Assessor Appointed secondary status  ·  Overdue Days = days beyond TAT limit (highlighted red)`,
     NC, { bg: A.sectionBg, fontColor: A.gray, bold: false, size: 9, italic: true }, 14);
+  addSpacer(ws, NC, 8);
+
+  const headers = isGroup
+    ? ['Handler', 'Claim ID', 'Cause', 'Days in Status', 'TAT Limit', 'Overdue Days']
+    : ['Claim ID', 'Cause', 'Days in Status', 'TAT Limit', 'Overdue Days'];
 
   for (const d of dataSet) {
-    addSpacer(ws, NC, 10);
-
     if (isGroup) {
       addMergedRow(ws, `   Handler: ${d.handler}`, NC,
         { bg: A.charcoal, fontColor: A.white, bold: true, size: 11 }, 26);
-      addSpacer(ws, NC, 6);
+      addSpacer(ws, NC, 4);
     }
 
-    const cs = d.csScore;
-    const trendDiff = cs?.lastMonth != null ? cs.total - cs.lastMonth : null;
-    const totalGood = cs && cs.total >= 70;
-    const totalOk   = cs && cs.total >= 50 && cs.total < 70;
-
-    // ── KPI header labels ──
-    const lblRow = ws.addRow(['CS SCORE', '', 'SPEED', '', 'QUALITY', '', 'COVERAGE', '']);
-    lblRow.height = 16;
-    [1,3,5,7].forEach(c => {
-      const cell = lblRow.getCell(c);
-      cell.fill = sf(A.navy); cell.font = font(true, 8, A.offWhite) as ExcelJS.Font;
-      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
-    });
-    [2,4,6,8].forEach(c => { lblRow.getCell(c).fill = sf(A.navy); });
-    ws.mergeCells(lblRow.number, 1, lblRow.number, 2);
-    ws.mergeCells(lblRow.number, 3, lblRow.number, 4);
-    ws.mergeCells(lblRow.number, 5, lblRow.number, 6);
-    ws.mergeCells(lblRow.number, 7, lblRow.number, 8);
-
-    // ── KPI values ──
-    const totalBg = totalGood ? A.lightGreen : totalOk ? A.lightAmber : cs ? A.lightRed : A.offWhite;
-    const totalFg = totalGood ? A.darkGreen  : totalOk ? A.darkAmber  : cs ? A.darkRed  : A.navy;
-    const valRow = ws.addRow([
-      cs ? `${cs.total}/100` : '—', '',
-      cs ? `${cs.speed}/25` : '—', '',
-      cs ? `${cs.quality}/25` : '—', '',
-      cs ? `${cs.coverage}/25` : '—', '',
-    ]);
-    valRow.height = 36;
-    ([[1, totalBg, totalFg], [3, A.sectionBg, A.navy], [5, A.sectionBg, A.navy], [7, A.sectionBg, A.navy]] as [number, string, string][])
-      .forEach(([c, bg, fg]) => {
-        const cell = valRow.getCell(c);
-        cell.fill = sf(bg);
-        cell.font = font(true, 20, fg) as ExcelJS.Font;
-        cell.alignment = { horizontal: 'center', vertical: 'middle' } as ExcelJS.Alignment;
-        cell.border = tb(A.border) as ExcelJS.Borders;
-        valRow.getCell(c + 1).fill = sf(bg);
-        valRow.getCell(c + 1).border = tb(A.border) as ExcelJS.Borders;
-      });
-    ws.mergeCells(valRow.number, 1, valRow.number, 2);
-    ws.mergeCells(valRow.number, 3, valRow.number, 4);
-    ws.mergeCells(valRow.number, 5, valRow.number, 6);
-    ws.mergeCells(valRow.number, 7, valRow.number, 8);
-
-    // ── KPI sub labels ──
-    const subRow = ws.addRow([
-      trendDiff !== null ? `${trendDiff >= 0 ? '+' : ''}${trendDiff} vs last month` : 'No prior data', '',
-      'Days to first payment', '', 'Reopen rate impact', '', 'TAT compliance', '',
-    ]);
-    subRow.height = 14;
-    [1,3,5,7].forEach(c => {
-      const cell = subRow.getCell(c);
-      cell.fill = sf(A.offWhite);
-      cell.font = font(false, 8, A.gray, true) as ExcelJS.Font;
-      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
-      subRow.getCell(c + 1).fill = sf(A.offWhite);
-    });
-    ws.mergeCells(subRow.number, 1, subRow.number, 2);
-    ws.mergeCells(subRow.number, 3, subRow.number, 4);
-    ws.mergeCells(subRow.number, 5, subRow.number, 6);
-    ws.mergeCells(subRow.number, 7, subRow.number, 8);
-
-    addSpacer(ws, NC, 6);
-
-    // ── Row 2 of KPI: Finalisation + Notification gap ──
-    const lbl2 = ws.addRow(['FINALISATION', '', 'NOTIFICATION GAP', '', 'TEAM AVG', '', 'TREND', '']);
-    lbl2.height = 16;
-    [1,3,5,7].forEach(c => {
-      const cell = lbl2.getCell(c);
-      cell.fill = sf(A.navy); cell.font = font(true, 8, A.offWhite) as ExcelJS.Font;
-      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
-    });
-    [2,4,6,8].forEach(c => { lbl2.getCell(c).fill = sf(A.navy); });
-    ws.mergeCells(lbl2.number, 1, lbl2.number, 2);
-    ws.mergeCells(lbl2.number, 3, lbl2.number, 4);
-    ws.mergeCells(lbl2.number, 5, lbl2.number, 6);
-    ws.mergeCells(lbl2.number, 7, lbl2.number, 8);
-
-    const notifHigher = d.notificationGap.avg !== null && d.notificationGap.teamAvg !== null
-      && d.notificationGap.avg > d.notificationGap.teamAvg;
-    const notifBg = notifHigher ? A.lightRed : A.lightGreen;
-    const notifFg = notifHigher ? A.darkRed  : A.darkGreen;
-
-    const lastCs = d.weeklyTrend.length >= 2
-      ? (d.weeklyTrend[d.weeklyTrend.length - 1].csScore ?? null)
-      : null;
-    const prevCs = d.weeklyTrend.length >= 2
-      ? (d.weeklyTrend[d.weeklyTrend.length - 2].csScore ?? null)
-      : null;
-    const trendStr = lastCs !== null && prevCs !== null
-      ? `${lastCs > prevCs ? '↑' : lastCs < prevCs ? '↓' : '→'} ${lastCs}/100`
-      : '—';
-
-    const val2 = ws.addRow([
-      cs ? `${cs.finalisation}/25` : '—', '',
-      d.notificationGap.avg !== null ? `${d.notificationGap.avg} days` : '—', '',
-      d.notificationGap.teamAvg !== null ? `${d.notificationGap.teamAvg} days` : '—', '',
-      trendStr, '',
-    ]);
-    val2.height = 36;
-    [
-      [1, A.sectionBg, A.navy],
-      [3, notifBg, notifFg],
-      [5, A.offWhite, A.navy],
-      [7, A.offWhite, A.navy],
-    ].forEach(([c, bg, fg]) => {
-      const cell = val2.getCell(c as number);
-      cell.fill = sf(bg as string);
-      cell.font = font(true, 18, fg as string) as ExcelJS.Font;
-      cell.alignment = { horizontal: 'center', vertical: 'middle' } as ExcelJS.Alignment;
-      cell.border = tb(A.border) as ExcelJS.Borders;
-      val2.getCell((c as number) + 1).fill = sf(bg as string);
-      val2.getCell((c as number) + 1).border = tb(A.border) as ExcelJS.Borders;
-    });
-    ws.mergeCells(val2.number, 1, val2.number, 2);
-    ws.mergeCells(val2.number, 3, val2.number, 4);
-    ws.mergeCells(val2.number, 5, val2.number, 6);
-    ws.mergeCells(val2.number, 7, val2.number, 8);
-
-    const sub2 = ws.addRow(['Avg days to finalise', '', 'Your average', '', 'Team benchmark', '', 'vs previous period', '']);
-    sub2.height = 14;
-    [1,3,5,7].forEach(c => {
-      const cell = sub2.getCell(c);
-      cell.fill = sf(A.offWhite);
-      cell.font = font(false, 8, A.gray, true) as ExcelJS.Font;
-      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
-      sub2.getCell(c + 1).fill = sf(A.offWhite);
-    });
-    ws.mergeCells(sub2.number, 1, sub2.number, 2);
-    ws.mergeCells(sub2.number, 3, sub2.number, 4);
-    ws.mergeCells(sub2.number, 5, sub2.number, 6);
-    ws.mergeCells(sub2.number, 7, sub2.number, 8);
-
-    // ── Coaching note ──
-    if (cs?.coachingNote) {
-      addSpacer(ws, NC, 6);
-      addMergedRow(ws, `   COACHING NOTE  —  ${cs.coachingNote}`, NC,
-        { bg: A.sectionBg, fontColor: A.navy, bold: true, size: 10 }, 26);
-    }
-
-    // ── TAT Breach Analysis ──
-    addSpacer(ws, NC, 10);
-    addMergedRow(ws, '   TAT BREACH ANALYSIS', NC,
-      { bg: A.teal, fontColor: A.white, bold: true, size: 11 }, 24);
-    addHeaderRow(ws, ['Secondary Status', 'Breach Count', '', '', '', '', '', ''].slice(0, NC),
-      A.charcoal, A.white, 22);
-
-    if (d.tatBreaches.length === 0) {
-      addMergedRow(ws, '   No TAT breaches recorded.', NC,
+    if (d.assessorAppointed.length === 0) {
+      addMergedRow(ws, '   No claims with Assessor Appointed status.', NC,
         { bg: A.lightGreen, fontColor: A.darkGreen, bold: false, size: 10 }, 18);
-    } else {
-      d.tatBreaches.forEach((b, idx) => {
-        const bg = idx % 2 === 0 ? A.white : A.offWhite;
-        const row = ws.addRow([]);
-        row.height = 19;
-        sc(row.getCell(1), b.secondaryStatus, { bg, fontColor: A.darkGray, bold: true, border: A.border });
-        sc(row.getCell(2), b.count,           { bg: A.lightRed, fontColor: A.darkRed, bold: true, h: 'center', border: A.redBorder });
-        for (let c = 3; c <= NC; c++) { row.getCell(c).fill = sf(bg); }
-      });
+      if (isGroup) addSpacer(ws, NC, 8);
+      continue;
     }
 
-    // ── Weekly CS Trend ──
-    addSpacer(ws, NC, 10);
-    addMergedRow(ws, '   12-WEEK CS SCORE TREND', NC,
-      { bg: A.teal, fontColor: A.white, bold: true, size: 11 }, 24);
-    addHeaderRow(ws, ['Week', 'CS Score', '', '', '', '', '', ''].slice(0, NC),
-      A.charcoal, A.white, 22);
+    addHeaderRow(ws, headers, A.teal, A.white, 22);
 
-    if (d.weeklyTrend.length === 0) {
-      addMergedRow(ws, '   No trend data available.', NC,
-        { bg: A.offWhite, fontColor: A.gray, bold: false, size: 10 }, 18);
-    } else {
-      d.weeklyTrend.forEach((pt, idx) => {
-        const bg = idx % 2 === 0 ? A.white : A.offWhite;
-        const score = pt.csScore;
-        const scoreBg = score !== null ? (score >= 70 ? A.lightGreen : score >= 50 ? A.lightAmber : A.lightRed) : A.offWhite;
-        const scoreFg = score !== null ? (score >= 70 ? A.darkGreen : score >= 50 ? A.darkAmber : A.darkRed) : A.gray;
-        const row = ws.addRow([]);
-        row.height = 19;
-        sc(row.getCell(1), pt.week,                           { bg, fontColor: A.darkGray, border: A.border });
-        sc(row.getCell(2), score !== null ? score : '—', { bg: scoreBg, fontColor: scoreFg, bold: true, h: 'center', border: A.border });
-        for (let c = 3; c <= NC; c++) { row.getCell(c).fill = sf(bg); }
-      });
-    }
+    d.assessorAppointed.forEach((item, idx) => {
+      const bg = idx % 2 === 0 ? A.lightTeal : A.white;
+      const isOverdue = item.overdueDays !== null && item.overdueDays > 0;
+      const overdueBg = isOverdue ? A.lightRed : A.lightGreen;
+      const overdueFg = isOverdue ? A.darkRed  : A.darkGreen;
+      const overdueBorder = isOverdue ? A.redBorder : A.greenBorder;
+
+      const row = ws.addRow([]);
+      row.height = 19;
+
+      const colData: Array<{ v: string | number | null; opts: CellOpts }> = isGroup
+        ? [
+            { v: item.handler ?? '—',      opts: { bg, fontColor: A.teal, bold: true,  border: A.tealBorder } },
+            { v: item.claimId,              opts: { bg, fontColor: A.teal, bold: true,  border: A.tealBorder } },
+            { v: item.cause ?? '—',         opts: { bg, fontColor: A.darkGray,          border: A.tealBorder } },
+            { v: item.daysInStatus ?? '—',  opts: { bg, fontColor: A.darkGray, h: 'center', border: A.tealBorder } },
+            { v: item.tatMaxDays ?? '—',    opts: { bg, fontColor: A.darkGray, h: 'center', border: A.tealBorder } },
+            { v: isOverdue ? item.overdueDays! : '—', opts: { bg: overdueBg, fontColor: overdueFg, bold: isOverdue, h: 'center', border: overdueBorder } },
+          ]
+        : [
+            { v: item.claimId,              opts: { bg, fontColor: A.teal, bold: true,  border: A.tealBorder } },
+            { v: item.cause ?? '—',         opts: { bg, fontColor: A.darkGray,          border: A.tealBorder } },
+            { v: item.daysInStatus ?? '—',  opts: { bg, fontColor: A.darkGray, h: 'center', border: A.tealBorder } },
+            { v: item.tatMaxDays ?? '—',    opts: { bg, fontColor: A.darkGray, h: 'center', border: A.tealBorder } },
+            { v: isOverdue ? item.overdueDays! : '—', opts: { bg: overdueBg, fontColor: overdueFg, bold: isOverdue, h: 'center', border: overdueBorder } },
+          ];
+
+      colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));
+    });
+
+    if (isGroup) addSpacer(ws, NC, 10);
+  }
+
+  if (totalCount === 0 && !isGroup) {
+    addMergedRow(ws, '   No claims with Assessor Appointed status.', NC,
+      { bg: A.lightGreen, fontColor: A.darkGreen, bold: false, size: 10 }, 20);
   }
 }
 
@@ -889,10 +781,10 @@ function buildPortfolioSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGro
 
 function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
   const ws = wb.addWorksheet('Pending Finalisation');
-  const NC = isGroup ? 7 : 6;
+  const NC = isGroup ? 6 : 5;
   const widths = isGroup
-    ? [22, 15, 28, 26, 17, 7, 13]
-    : [15, 28, 26, 17, 7, 13];
+    ? [22, 15, 28, 26, 17, 9]
+    : [15, 28, 26, 17, 9];
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const sd = dataSet[0]?.snapshotDate;
@@ -906,8 +798,8 @@ function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerDat
   addSpacer(ws, NC, 8);
 
   const headers = isGroup
-    ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'TAT']
-    : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'TAT'];
+    ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days']
+    : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days'];
 
   for (const d of dataSet) {
     if (isGroup) {
@@ -927,12 +819,6 @@ function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerDat
 
     d.pendingFinalisation.forEach((item, idx) => {
       const bg = idx % 2 === 0 ? A.lightPurple : A.white;
-      const tatBg =
-        item.tatPosition === 'breach' ? A.lightRed :
-        item.tatPosition === 'at-risk' ? A.lightAmber : A.lightGreen;
-      const tatFg =
-        item.tatPosition === 'breach' ? A.darkRed :
-        item.tatPosition === 'at-risk' ? A.darkAmber : A.darkGreen;
 
       const row = ws.addRow([]);
       row.height = 19;
@@ -945,7 +831,6 @@ function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerDat
             { v: item.cause ?? '—',             opts: { bg, fontColor: A.darkPurple, border: A.purpleBorder } },
             { v: zarStr(item.totalIncurred),     opts: { bg, fontColor: A.darkPurple, bold: true, h: 'right', border: A.purpleBorder } },
             { v: item.daysInStatus ?? '—',      opts: { bg, fontColor: A.darkPurple, h: 'center', border: A.purpleBorder } },
-            { v: tatLabel(item.tatPosition),    opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: A.purpleBorder } },
           ]
         : [
             { v: item.claimId,                  opts: { bg, fontColor: A.darkPurple, bold: true, border: A.purpleBorder } },
@@ -953,7 +838,6 @@ function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerDat
             { v: item.cause ?? '—',             opts: { bg, fontColor: A.darkPurple, border: A.purpleBorder } },
             { v: zarStr(item.totalIncurred),     opts: { bg, fontColor: A.darkPurple, bold: true, h: 'right', border: A.purpleBorder } },
             { v: item.daysInStatus ?? '—',      opts: { bg, fontColor: A.darkPurple, h: 'center', border: A.purpleBorder } },
-            { v: tatLabel(item.tatPosition),    opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: A.purpleBorder } },
           ];
 
       colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));
@@ -975,7 +859,7 @@ function buildWorkbook(dataSet: HandlerData[], isGroup: boolean): ExcelJS.Workbo
   wb.modified = new Date();
 
   buildActionSheet(wb, dataSet, isGroup);
-  buildCsTatSheet(wb, dataSet, isGroup);
+  buildAssessorAppointedSheet(wb, dataSet, isGroup);
   buildPortfolioSheet(wb, dataSet, isGroup);
   buildPendingFinalisationSheet(wb, dataSet, isGroup);
 

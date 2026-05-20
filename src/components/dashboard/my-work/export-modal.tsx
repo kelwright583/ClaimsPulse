@@ -288,9 +288,9 @@ export function ExportModal({ isOpen, onClose, currentHandler, role }: ExportMod
               <div className="grid grid-cols-2 gap-1.5">
                 {[
                   { label: "Today's Action Items", color: 'bg-blue-100 text-blue-700' },
-                  { label: 'CS & TAT Health', color: 'bg-teal-100 text-teal-700' },
+                  { label: 'Assessor Appointed', color: 'bg-teal-100 text-teal-700' },
                   { label: 'My Portfolio', color: 'bg-indigo-100 text-indigo-700' },
-                  { label: 'Pending Settlement', color: 'bg-purple-100 text-purple-700' },
+                  { label: 'Pending Finalisation', color: 'bg-purple-100 text-purple-700' },
                 ].map(({ label, color }) => (
                   <div key={label} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${color}`}>
                     <div className="w-1.5 h-1.5 rounded-full bg-current opacity-60 flex-shrink-0" />
