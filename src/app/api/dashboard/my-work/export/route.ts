@@ -321,6 +321,11 @@ function isPendingFinalisation(_claimStatus: string | null, secondaryStatus: str
   return (secondaryStatus ?? '').toLowerCase().includes('claim settled');
 }
 
+function isExportExcluded(secondaryStatus: string | null): boolean {
+  const ss = (secondaryStatus ?? '').toLowerCase();
+  return ss.includes('own damage claim finalised') && ss.includes('tp claim in process');
+}
+
 async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<HandlerData> {
   const hw = { handler };
   const excl = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
@@ -373,7 +378,7 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
   });
 
   const pendingFinalisation = allItems.filter(i => isPendingFinalisation(i.claimStatus, i.secondaryStatus));
-  const actionItems = allItems.filter(i => !isPendingFinalisation(i.claimStatus, i.secondaryStatus));
+  const actionItems = allItems.filter(i => !isPendingFinalisation(i.claimStatus, i.secondaryStatus) && !isExportExcluded(i.secondaryStatus));
 
   // Assessor Appointed claims — days in status vs TAT limit
   const assessorTatKey = [...slaMap.keys()].find(k => k.toLowerCase().includes('assessor appointed'));
@@ -415,7 +420,7 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
     ? await prisma.acknowledgedDelay.count({ where: { claimId: { in: portClaimIds }, isActive: true } })
     : 0;
 
-  const portfolioClaims: PortfolioClaimRow[] = portClaims.map(r => {
+  const portfolioClaims: PortfolioClaimRow[] = portClaims.filter(r => !isExportExcluded(r.secondaryStatus)).map(r => {
     const tatCfg = r.secondaryStatus ? slaMap.get(r.secondaryStatus) : null;
     let tatPos: TatPos = 'on-track';
     if (r.isTatBreach) tatPos = 'breach';
