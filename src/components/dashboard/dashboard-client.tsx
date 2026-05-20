@@ -2,12 +2,14 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { Download } from 'lucide-react';
 import type { UserRole } from '@/types/roles';
 import type { TopView, FilterState } from './types';
 import { DEFAULT_VIEW, DEFAULT_FILTERS, SUB_VIEWS, TOP_VIEWS } from './types';
 import { ViewSwitcher } from './view-switcher';
 import { SubViewSwitcher } from './sub-view-switcher';
 import { FilterBar } from './filter-bar';
+import { ExportModal } from './my-work/export-modal';
 
 // Sub-view components — management overview
 import { ManagementOverviewClient } from './management-overview/management-overview-client';
@@ -76,6 +78,7 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
 
   // ── My Work handler selector ─────────────────────────────────────────────
   const [myWorkHandler, setMyWorkHandler] = useState<string>(fullName ?? '');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   // ── URL updaters ─────────────────────────────────────────────────────────
   function buildParams(
@@ -155,6 +158,13 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
   }
 
   return (
+    <>
+    <ExportModal
+      isOpen={exportModalOpen}
+      onClose={() => setExportModalOpen(false)}
+      currentHandler={myWorkHandler}
+      role={role}
+    />
     <div className="space-y-0">
       {/* Page heading + Level 1 view tabs */}
       <div className="flex items-center justify-between mb-4">
@@ -164,7 +174,18 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
             {fullName ? `Welcome back, ${fullName.split(' ')[0]}` : 'Welcome back'}
           </p>
         </div>
-        <ViewSwitcher role={role} active={activeView} onChange={handleViewChange} />
+        <div className="flex items-center gap-3">
+          {activeView === 'my-work' && (
+            <button
+              onClick={() => setExportModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#0D2761] text-white text-sm font-semibold rounded-xl hover:bg-[#1E5BC6] transition-colors shadow-sm"
+            >
+              <Download className="w-4 h-4" strokeWidth={2} />
+              Export
+            </button>
+          )}
+          <ViewSwitcher role={role} active={activeView} onChange={handleViewChange} />
+        </div>
       </div>
 
       {/* Level 2 — sub-view tabs (hidden for standalone views) */}
@@ -189,5 +210,6 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
         {renderSubView()}
       </div>
     </div>
+    </>
   );
 }
