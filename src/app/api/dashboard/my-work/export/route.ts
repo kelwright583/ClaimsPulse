@@ -56,9 +56,10 @@ const ST: Record<string, Sty> = {
   purpleHeader:   { font: f({ bold: true, color: { rgb: C.white } }),       fill: fl(C.purple), alignment: al('center'), border: bd() },
   tealHeader:     { font: f({ bold: true, color: { rgb: C.white } }),       fill: fl(C.teal),   alignment: al('center'), border: bd() },
 
-  sectionCritical:{ font: f({ bold: true, sz: 9, color: { rgb: C.darkRed } }),   fill: fl(C.redBorder),   alignment: al('left') },
-  sectionUrgent:  { font: f({ bold: true, sz: 9, color: { rgb: C.darkAmber } }), fill: fl(C.amberBorder), alignment: al('left') },
-  sectionStd:     { font: f({ bold: true, sz: 9, color: { rgb: C.blue } }),      fill: fl(C.sectionBg),   alignment: al('left') },
+  sectionCritical:{ font: f({ bold: true, sz: 11, color: { rgb: C.white } }),   fill: fl(C.red),    alignment: al('left') },
+  sectionUrgent:  { font: f({ bold: true, sz: 11, color: { rgb: C.white } }),   fill: fl('B45309'), alignment: al('left') },
+  sectionStd:     { font: f({ bold: true, sz: 11, color: { rgb: C.white } }),   fill: fl(C.blue),   alignment: al('left') },
+  sectionDivider: { font: f({ bold: true, sz: 10, color: { rgb: C.white } }),   fill: fl('374151'), alignment: al('left') },
 
   critical:       { font: f({ color: { rgb: C.darkRed } }),        fill: fl(C.lightRed),   border: bd(C.redBorder),   alignment: al() },
   criticalBold:   { font: f({ bold: true, color: { rgb: C.darkRed } }), fill: fl(C.lightRed), border: bd(C.redBorder), alignment: al() },
@@ -451,10 +452,10 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
 
 function buildActionSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSheet {
   const ws: XLSX.WorkSheet = {};
-  const NC = isGroup ? 9 : 8; // columns
+  const NC = isGroup ? 8 : 7; // columns
   const colW = isGroup
-    ? [22, 14, 26, 22, 22, 16, 8, 12, 12]
-    : [14, 26, 22, 22, 16, 8, 12, 12];
+    ? [22, 14, 26, 24, 16, 8, 12, 12]
+    : [14, 26, 24, 16, 8, 12, 12];
   ws['!cols'] = colW.map(w => ({ wch: w }));
   let r = 0;
 
@@ -468,8 +469,8 @@ function buildActionSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSh
   emptyRow(ws, r++, NC, ST.empty, 6);
 
   const headers = isGroup
-    ? ['Handler', 'Claim ID', 'Secondary Status', 'Insured', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT']
-    : ['Claim ID', 'Secondary Status', 'Insured', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT'];
+    ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT']
+    : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT'];
 
   function writeSection(
     sectionLabel: string,
@@ -497,21 +498,19 @@ function buildActionSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSh
         wc(ws, r, 0, item.handler ?? '—', bSty);
         wc(ws, r, 1, item.claimId, bSty);
         wc(ws, r, 2, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 3, item.insured ?? '—', rSty);
-        wc(ws, r, 4, item.cause ?? '—', rSty);
-        wc(ws, r, 5, zarStr(item.totalIncurred), cSty);
-        wc(ws, r, 6, item.daysInStatus ?? '—', rSty);
-        wc(ws, r, 7, item.priority.toUpperCase(), rSty);
-        wc(ws, r, 8, tLbl, tSty);
-      } else {
-        wc(ws, r, 0, item.claimId, bSty);
-        wc(ws, r, 1, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 2, item.insured ?? '—', rSty);
         wc(ws, r, 3, item.cause ?? '—', rSty);
         wc(ws, r, 4, zarStr(item.totalIncurred), cSty);
         wc(ws, r, 5, item.daysInStatus ?? '—', rSty);
         wc(ws, r, 6, item.priority.toUpperCase(), rSty);
         wc(ws, r, 7, tLbl, tSty);
+      } else {
+        wc(ws, r, 0, item.claimId, bSty);
+        wc(ws, r, 1, item.secondaryStatus ?? '—', rSty);
+        wc(ws, r, 2, item.cause ?? '—', rSty);
+        wc(ws, r, 3, zarStr(item.totalIncurred), cSty);
+        wc(ws, r, 4, item.daysInStatus ?? '—', rSty);
+        wc(ws, r, 5, item.priority.toUpperCase(), rSty);
+        wc(ws, r, 6, tLbl, tSty);
       }
       rh(ws, r, 18); r++;
     });
@@ -521,7 +520,7 @@ function buildActionSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSh
   if (isGroup) {
     // Group: write per-handler sections
     for (const d of dataSet) {
-      mergedRow(ws, r, `  Handler: ${d.handler}`, NC, { font: f({ bold: true, sz: 11, color: { rgb: C.white } }), fill: fl(C.navy), alignment: al('left') }, 22);
+      mergedRow(ws, r, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
       r++;
       const critical = d.actionItems.filter(i => i.priority === 'critical');
       const urgent   = d.actionItems.filter(i => i.priority === 'urgent');
@@ -570,8 +569,7 @@ function buildCsTatSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkShe
     emptyRow(ws, r++, NC, ST.empty, 10);
 
     if (isGroup) {
-      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC,
-        { font: f({ bold: true, sz: 11, color: { rgb: C.white } }), fill: fl(C.teal), alignment: al('left') }, 22);
+      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
     }
 
     // ── CS Score KPI block ──
@@ -652,7 +650,7 @@ function buildCsTatSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkShe
 
     // ── TAT Breach Analysis ──
     emptyRow(ws, r++, NC, ST.empty, 10);
-    mergedRow(ws, r++, '  TAT BREACH ANALYSIS', NC, ST.sectionStd, 18);
+    mergedRow(ws, r++, '  TAT BREACH ANALYSIS', NC, ST.titleTeal, 22);
     ['Secondary Status', 'Breach Count'].forEach((h, c) => wc(ws, r, c, h, ST.tealHeader));
     for (let c = 2; c < NC; c++) wc(ws, r, c, '', ST.tealHeader);
     rh(ws, r++, 20);
@@ -672,7 +670,7 @@ function buildCsTatSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkShe
 
     // ── Weekly CS Trend ──
     emptyRow(ws, r++, NC, ST.empty, 10);
-    mergedRow(ws, r++, '  12-WEEK CS SCORE TREND', NC, ST.sectionStd, 18);
+    mergedRow(ws, r++, '  12-WEEK CS SCORE TREND', NC, ST.titleTeal, 22);
     ['Week', 'CS Score'].forEach((h, c) => wc(ws, r, c, h, ST.tealHeader));
     for (let c = 2; c < NC; c++) wc(ws, r, c, '', ST.tealHeader);
     rh(ws, r++, 20);
@@ -722,8 +720,7 @@ function buildPortfolioSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.Wor
 
   for (const d of dataSet) {
     if (isGroup) {
-      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC,
-        { font: f({ bold: true, sz: 11, color: { rgb: C.white } }), fill: fl(C.navy), alignment: al('left') }, 22);
+      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
     }
 
     // Stats block
@@ -793,10 +790,10 @@ function buildPortfolioSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.Wor
 
 function buildPendingSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSheet {
   const ws: XLSX.WorkSheet = {};
-  const NC = isGroup ? 8 : 7;
+  const NC = isGroup ? 7 : 6;
   const colW = isGroup
-    ? [22, 14, 26, 22, 16, 16, 8, 12]
-    : [14, 26, 22, 16, 16, 8, 12];
+    ? [22, 14, 26, 24, 16, 8, 12]
+    : [14, 26, 24, 16, 8, 12];
   ws['!cols'] = colW.map(w => ({ wch: w }));
   let r = 0;
 
@@ -808,13 +805,12 @@ function buildPendingSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkS
   emptyRow(ws, r++, NC, ST.empty, 6);
 
   const headers = isGroup
-    ? ['Handler', 'Claim ID', 'Secondary Status', 'Insured', 'Cause', 'Total Incurred', 'Days', 'TAT']
-    : ['Claim ID', 'Secondary Status', 'Insured', 'Cause', 'Total Incurred', 'Days', 'TAT'];
+    ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'TAT']
+    : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'TAT'];
 
   for (const d of dataSet) {
     if (isGroup) {
-      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC,
-        { font: f({ bold: true, sz: 11, color: { rgb: C.white } }), fill: fl(C.purple), alignment: al('left') }, 22);
+      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
     }
 
     if (d.pendingSettlement.length === 0) {
@@ -837,19 +833,17 @@ function buildPendingSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkS
         wc(ws, r, 0, item.handler ?? '—', bSty);
         wc(ws, r, 1, item.claimId, bSty);
         wc(ws, r, 2, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 3, item.insured ?? '—', rSty);
-        wc(ws, r, 4, item.cause ?? '—', rSty);
-        wc(ws, r, 5, zarStr(item.totalIncurred), cSty);
-        wc(ws, r, 6, item.daysInStatus ?? '—', rSty);
-        wc(ws, r, 7, tLbl, ST.settBadge);
-      } else {
-        wc(ws, r, 0, item.claimId, bSty);
-        wc(ws, r, 1, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 2, item.insured ?? '—', rSty);
         wc(ws, r, 3, item.cause ?? '—', rSty);
         wc(ws, r, 4, zarStr(item.totalIncurred), cSty);
         wc(ws, r, 5, item.daysInStatus ?? '—', rSty);
         wc(ws, r, 6, tLbl, ST.settBadge);
+      } else {
+        wc(ws, r, 0, item.claimId, bSty);
+        wc(ws, r, 1, item.secondaryStatus ?? '—', rSty);
+        wc(ws, r, 2, item.cause ?? '—', rSty);
+        wc(ws, r, 3, zarStr(item.totalIncurred), cSty);
+        wc(ws, r, 4, item.daysInStatus ?? '—', rSty);
+        wc(ws, r, 5, tLbl, ST.settBadge);
       }
       rh(ws, r++, 18);
     });
