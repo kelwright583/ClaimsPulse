@@ -44,11 +44,13 @@ function sf(argb: string): ExcelJS.Fill {
 
 function tb(argb: string): ExcelJS.Borders {
   const b: ExcelJS.Border = { style: 'thin', color: { argb } };
-  return { top: b, bottom: b, left: b, right: b };
+  return { top: b, bottom: b, left: b, right: b, diagonal: b };
 }
 
 function mbottom(argb: string): ExcelJS.Borders {
-  return { bottom: { style: 'medium', color: { argb } } };
+  const none: ExcelJS.Border = { style: 'thin', color: { argb: '00000000' } };
+  const med: ExcelJS.Border = { style: 'medium', color: { argb } };
+  return { top: none, left: none, right: none, bottom: med, diagonal: none };
 }
 
 function font(
