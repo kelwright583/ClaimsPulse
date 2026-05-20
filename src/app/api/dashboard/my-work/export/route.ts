@@ -2,138 +2,149 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
-// ── Colour palette ────────────────────────────────────────────────────────────
-const C = {
-  navy:        '0D2761',
-  blue:        '1E5BC6',
-  white:       'FFFFFF',
-  offWhite:    'F8FAFF',
-  border:      'E8EEF8',
-  gray:        '6B7280',
-  dark:        '374151',
-  red:         'DC2626',
-  darkRed:     '7F1D1D',
-  lightRed:    'FEE2E2',
-  redBorder:   'FCA5A5',
-  darkAmber:   '92400E',
-  lightAmber:  'FEF3C7',
-  amberBorder: 'FDE68A',
-  darkGreen:   '166534',
-  lightGreen:  'DCFCE7',
-  purple:      '7C3AED',
-  darkPurple:  '4C1D95',
-  lightPurple: 'EDE9FE',
-  purpleBorder:'C4B5FD',
-  sectionBg:   'EEF2FF',
-  amber:       'F5A800',
-  teal:        '0D9488',
-  lightTeal:   'CCFBF1',
-  tealBorder:  '99F6E4',
+// ── ARGB colour palette (FF prefix = 100 % opaque) ───────────────────────────
+const A = {
+  navy:         'FF0D2761',
+  blue:         'FF1E5BC6',
+  white:        'FFFFFFFF',
+  offWhite:     'FFF8FAFF',
+  lightGray:    'FFF3F4F6',
+  gray:         'FF6B7280',
+  darkGray:     'FF374151',
+  charcoal:     'FF1F2937',
+  border:       'FFE8EEF8',
+  red:          'FFDC2626',
+  darkRed:      'FF7F1D1D',
+  lightRed:     'FFFEE2E2',
+  redBorder:    'FFFCA5A5',
+  amber:        'FFF59E0B',
+  darkAmber:    'FFB45309',
+  lightAmber:   'FFFEF3C7',
+  amberBorder:  'FFFDE68A',
+  green:        'FF16A34A',
+  darkGreen:    'FF166534',
+  lightGreen:   'FFDCFCE7',
+  greenBorder:  'FF86EFAC',
+  purple:       'FF7C3AED',
+  darkPurple:   'FF4C1D95',
+  lightPurple:  'FFEDE9FE',
+  purpleBorder: 'FFC4B5FD',
+  teal:         'FF0F766E',
+  lightTeal:    'FFCCFBF1',
+  tealBorder:   'FF5EEAD4',
+  sectionBg:    'FFEEF2FF',
 };
 
-// ── Style helpers ─────────────────────────────────────────────────────────────
-type Sty = Record<string, unknown>;
+// ── ExcelJS style helpers ─────────────────────────────────────────────────────
+function sf(argb: string): ExcelJS.Fill {
+  return { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+}
 
-const f = (o: Record<string, unknown>): Record<string, unknown> => ({ name: 'Calibri', sz: 10, ...o });
-const fl = (rgb: string): Record<string, unknown> => ({ type: 'pattern', patternType: 'solid', fgColor: { rgb } });
-const bd = (rgb = C.border): Record<string, unknown> => {
-  const b = { style: 'thin', color: { rgb } };
+function tb(argb: string): ExcelJS.Borders {
+  const b: ExcelJS.Border = { style: 'thin', color: { argb } };
   return { top: b, bottom: b, left: b, right: b };
-};
-const al = (horizontal = 'left', wrapText = false): Record<string, unknown> => ({
-  horizontal, vertical: 'center', wrapText,
-});
-
-const ST: Record<string, Sty> = {
-  titleNavy:   { font: f({ bold: true, sz: 14, color: { rgb: C.white } }), fill: fl(C.navy),   alignment: al('left') },
-  titlePurple: { font: f({ bold: true, sz: 14, color: { rgb: C.white } }), fill: fl(C.purple), alignment: al('left') },
-  titleTeal:   { font: f({ bold: true, sz: 14, color: { rgb: C.white } }), fill: fl(C.teal),   alignment: al('left') },
-  subtitle:    { font: f({ italic: true, sz: 9, color: { rgb: C.gray } }), fill: fl(C.offWhite), alignment: al('left') },
-
-  colHeader:      { font: f({ bold: true, color: { rgb: C.white } }),       fill: fl(C.blue),   alignment: al('center'), border: bd() },
-  purpleHeader:   { font: f({ bold: true, color: { rgb: C.white } }),       fill: fl(C.purple), alignment: al('center'), border: bd() },
-  tealHeader:     { font: f({ bold: true, color: { rgb: C.white } }),       fill: fl(C.teal),   alignment: al('center'), border: bd() },
-
-  sectionCritical:{ font: f({ bold: true, sz: 11, color: { rgb: C.white } }),   fill: fl(C.red),    alignment: al('left') },
-  sectionUrgent:  { font: f({ bold: true, sz: 11, color: { rgb: C.white } }),   fill: fl('B45309'), alignment: al('left') },
-  sectionStd:     { font: f({ bold: true, sz: 11, color: { rgb: C.white } }),   fill: fl(C.blue),   alignment: al('left') },
-  sectionDivider: { font: f({ bold: true, sz: 10, color: { rgb: C.white } }),   fill: fl('374151'), alignment: al('left') },
-
-  critical:       { font: f({ color: { rgb: C.darkRed } }),        fill: fl(C.lightRed),   border: bd(C.redBorder),   alignment: al() },
-  criticalBold:   { font: f({ bold: true, color: { rgb: C.darkRed } }), fill: fl(C.lightRed), border: bd(C.redBorder), alignment: al() },
-  critCurrency:   { font: f({ bold: true, color: { rgb: C.darkRed } }), fill: fl(C.lightRed), border: bd(C.redBorder), alignment: al('right') },
-
-  urgent:         { font: f({ color: { rgb: C.darkAmber } }),      fill: fl(C.lightAmber), border: bd(C.amberBorder), alignment: al() },
-  urgentBold:     { font: f({ bold: true, color: { rgb: C.darkAmber } }), fill: fl(C.lightAmber), border: bd(C.amberBorder), alignment: al() },
-  urgCurrency:    { font: f({ bold: true, color: { rgb: C.darkAmber } }), fill: fl(C.lightAmber), border: bd(C.amberBorder), alignment: al('right') },
-
-  std:            { font: f({ color: { rgb: C.dark } }),            fill: fl(C.white),    border: bd(), alignment: al() },
-  stdBold:        { font: f({ bold: true, color: { rgb: C.navy } }),fill: fl(C.white),    border: bd(), alignment: al() },
-  stdCurrency:    { font: f({ bold: true, color: { rgb: C.navy } }),fill: fl(C.white),    border: bd(), alignment: al('right') },
-
-  alt:            { font: f({ color: { rgb: C.dark } }),            fill: fl(C.offWhite), border: bd(), alignment: al() },
-  altBold:        { font: f({ bold: true, color: { rgb: C.navy } }),fill: fl(C.offWhite), border: bd(), alignment: al() },
-  altCurrency:    { font: f({ bold: true, color: { rgb: C.navy } }),fill: fl(C.offWhite), border: bd(), alignment: al('right') },
-
-  breach:         { font: f({ bold: true, color: { rgb: C.darkRed } }),   fill: fl(C.lightRed),   border: bd(), alignment: al('center') },
-  atRisk:         { font: f({ bold: true, color: { rgb: C.darkAmber } }), fill: fl(C.lightAmber), border: bd(), alignment: al('center') },
-  onTrack:        { font: f({ bold: true, color: { rgb: C.darkGreen } }), fill: fl(C.lightGreen), border: bd(), alignment: al('center') },
-
-  kpiLabel:       { font: f({ sz: 8, color: { rgb: C.gray } }),          fill: fl(C.offWhite), alignment: al('center') },
-  kpiValue:       { font: f({ bold: true, sz: 18, color: { rgb: C.navy } }),     fill: fl(C.offWhite), alignment: { horizontal: 'center', vertical: 'center' } },
-  kpiGood:        { font: f({ bold: true, sz: 18, color: { rgb: C.darkGreen } }), fill: fl(C.lightGreen), alignment: { horizontal: 'center', vertical: 'center' } },
-  kpiBad:         { font: f({ bold: true, sz: 18, color: { rgb: C.darkRed } }),   fill: fl(C.lightRed),   alignment: { horizontal: 'center', vertical: 'center' } },
-  kpiSub:         { font: f({ sz: 8, italic: true, color: { rgb: C.gray } }),     fill: fl(C.offWhite), alignment: al('center') },
-
-  statLabel:      { font: f({ sz: 9, color: { rgb: C.white } }),          fill: fl(C.navy), border: bd(C.blue),  alignment: al('center') },
-  statValue:      { font: f({ bold: true, sz: 14, color: { rgb: C.white } }), fill: fl(C.blue), border: bd(C.navy), alignment: al('center') },
-  statValueBad:   { font: f({ bold: true, sz: 14, color: { rgb: C.white } }), fill: fl(C.red),  border: bd(C.navy), alignment: al('center') },
-  statValueAmber: { font: f({ bold: true, sz: 14, color: { rgb: C.white } }), fill: fl(C.amber), border: bd(C.navy), alignment: al('center') },
-
-  settRow:        { font: f({ color: { rgb: C.darkPurple } }),           fill: fl(C.lightPurple), border: bd(C.purpleBorder), alignment: al() },
-  settBold:       { font: f({ bold: true, color: { rgb: C.darkPurple } }), fill: fl(C.lightPurple), border: bd(C.purpleBorder), alignment: al() },
-  settCurrency:   { font: f({ bold: true, color: { rgb: C.darkPurple } }), fill: fl(C.lightPurple), border: bd(C.purpleBorder), alignment: al('right') },
-  settBadge:      { font: f({ bold: true, color: { rgb: C.darkPurple } }), fill: fl(C.lightPurple), border: bd(C.purpleBorder), alignment: al('center') },
-
-  coachBox:       { font: f({ italic: true, sz: 9, color: { rgb: C.navy } }), fill: fl(C.sectionBg), alignment: { horizontal: 'left', vertical: 'center', wrapText: true } },
-  empty:          { fill: fl(C.white), alignment: al() },
-  emptySect:      { fill: fl(C.offWhite), alignment: al() },
-};
-
-// ── Worksheet helpers ─────────────────────────────────────────────────────────
-function wc(ws: XLSX.WorkSheet, r: number, c: number, v: string | number | null | undefined, sty: Sty): void {
-  const addr = XLSX.utils.encode_cell({ r, c });
-  const val = v ?? '—';
-  (ws[addr] as XLSX.CellObject) = { v: val, t: typeof val === 'number' ? 'n' : 's', s: sty };
 }
 
-function mc(ws: XLSX.WorkSheet, r1: number, c1: number, r2: number, c2: number): void {
-  if (!ws['!merges']) ws['!merges'] = [];
-  (ws['!merges'] as XLSX.Range[]).push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } });
+function mbottom(argb: string): ExcelJS.Borders {
+  return { bottom: { style: 'medium', color: { argb } } };
 }
 
-function rh(ws: XLSX.WorkSheet, r: number, hpt: number): void {
-  if (!ws['!rows']) ws['!rows'] = [];
-  const rows = ws['!rows'] as ({ hpt?: number } | null | undefined)[];
-  while (rows.length <= r) rows.push(null);
-  rows[r] = { hpt };
+function font(
+  bold: boolean,
+  size: number,
+  argb: string,
+  italic = false,
+  name = 'Calibri',
+): Partial<ExcelJS.Font> {
+  return { name, bold, size, color: { argb }, italic };
 }
 
-function setRef(ws: XLSX.WorkSheet, maxR: number, maxC: number): void {
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, maxR), c: Math.max(0, maxC) } });
+function align(
+  h: ExcelJS.Alignment['horizontal'] = 'left',
+  v: ExcelJS.Alignment['vertical'] = 'middle',
+  wrap = false,
+): Partial<ExcelJS.Alignment> {
+  return { horizontal: h, vertical: v, wrapText: wrap };
 }
 
-function mergedRow(ws: XLSX.WorkSheet, row: number, text: string, ncols: number, sty: Sty, height = 28): void {
-  for (let c = 0; c < ncols; c++) wc(ws, row, c, c === 0 ? text : '', sty);
-  mc(ws, row, 0, row, ncols - 1);
-  rh(ws, row, height);
+// Apply full style to a cell
+interface CellOpts {
+  bg: string;
+  fontColor: string;
+  bold?: boolean;
+  size?: number;
+  italic?: boolean;
+  h?: ExcelJS.Alignment['horizontal'];
+  border?: string;   // argb for thin border
+  wrap?: boolean;
 }
 
-function emptyRow(ws: XLSX.WorkSheet, row: number, ncols: number, sty: Sty = ST.empty, height = 8): void {
-  for (let c = 0; c < ncols; c++) wc(ws, row, c, '', sty);
-  rh(ws, row, height);
+function sc(
+  cell: ExcelJS.Cell,
+  value: string | number | null | undefined,
+  o: CellOpts,
+): void {
+  cell.value = value ?? '—';
+  cell.fill = sf(o.bg);
+  cell.font = font(o.bold ?? false, o.size ?? 10, o.fontColor, o.italic ?? false) as ExcelJS.Font;
+  cell.alignment = align(o.h ?? 'left', 'middle', o.wrap ?? false) as ExcelJS.Alignment;
+  if (o.border) cell.border = tb(o.border) as ExcelJS.Borders;
+}
+
+// Fill a row's background without setting text
+function fillRow(row: ExcelJS.Row, ncols: number, bgArgb: string): void {
+  for (let c = 1; c <= ncols; c++) {
+    row.getCell(c).fill = sf(bgArgb);
+  }
+}
+
+// Add a full-width merged title/section row
+function addMergedRow(
+  ws: ExcelJS.Worksheet,
+  text: string,
+  ncols: number,
+  o: CellOpts,
+  height: number,
+): void {
+  const row = ws.addRow([text]);
+  row.height = height;
+  fillRow(row, ncols, o.bg);
+  const cell = row.getCell(1);
+  cell.value = text;
+  cell.font = font(o.bold ?? true, o.size ?? 11, o.fontColor, o.italic ?? false) as ExcelJS.Font;
+  cell.alignment = align('left', 'middle') as ExcelJS.Alignment;
+  cell.fill = sf(o.bg);
+  if (o.border) cell.border = mbottom(o.border) as ExcelJS.Borders;
+  if (ncols > 1) ws.mergeCells(row.number, 1, row.number, ncols);
+}
+
+// Add a spacer row
+function addSpacer(ws: ExcelJS.Worksheet, ncols: number, height: number, bg = A.white): void {
+  const row = ws.addRow([]);
+  row.height = height;
+  fillRow(row, ncols, bg);
+}
+
+// Add a column header row
+function addHeaderRow(
+  ws: ExcelJS.Worksheet,
+  headers: string[],
+  bg: string,
+  fontColor: string,
+  height: number,
+): ExcelJS.Row {
+  const row = ws.addRow(headers);
+  row.height = height;
+  headers.forEach((_, i) => {
+    const cell = row.getCell(i + 1);
+    cell.fill = sf(bg);
+    cell.font = font(true, 10, fontColor) as ExcelJS.Font;
+    cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+    cell.border = tb(A.border) as ExcelJS.Borders;
+  });
+  return row;
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -146,11 +157,6 @@ function dateStr(d: Date): string {
   return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function tatSty(pos: string): Sty {
-  if (pos === 'breach') return ST.breach;
-  if (pos === 'at-risk') return ST.atRisk;
-  return ST.onTrack;
-}
 function tatLabel(pos: string): string {
   if (pos === 'breach') return 'BREACH';
   if (pos === 'at-risk') return 'AT RISK';
@@ -208,7 +214,7 @@ interface HandlerData {
   handler: string;
   snapshotDate: Date;
   actionItems: ActionItem[];
-  pendingSettlement: ActionItem[];
+  pendingFinalisation: ActionItem[];
   portfolioStats: { openClaims: number; totalOutstanding: number; tatBreaches: number; activeDelays: number };
   portfolioClaims: PortfolioClaimRow[];
   csScore: CsScoreResult | null;
@@ -260,10 +266,10 @@ async function computeCsScore(handler: string | null, snapshotDate: Date): Promi
   const r1 = (n: number) => Math.round(n * 10) / 10;
 
   const scores = [
-    { key: 'speed',        val: speed,        note: 'Focus on issuing first payments earlier to improve response speed.' },
-    { key: 'quality',      val: quality,       note: 'Reduce claim reopening by ensuring thorough assessment before closure.' },
-    { key: 'coverage',     val: coverage,      note: 'Address TAT breaches by prioritising claims approaching their deadline.' },
-    { key: 'finalisation', val: finalisation,  note: 'Work to reduce the average time to close claims in your portfolio.' },
+    { val: speed,        note: 'Focus on issuing first payments earlier to improve response speed.' },
+    { val: quality,      note: 'Reduce claim reopening by ensuring thorough assessment before closure.' },
+    { val: coverage,     note: 'Address TAT breaches by prioritising claims approaching their deadline.' },
+    { val: finalisation, note: 'Work to reduce the average time to close claims in your portfolio.' },
   ];
   const lowest = [...scores].sort((a, b) => a.val - b.val)[0];
 
@@ -276,7 +282,7 @@ async function computeCsScore(handler: string | null, snapshotDate: Date): Promi
 }
 
 // ── Data fetcher per handler ──────────────────────────────────────────────────
-function isPendingSettlement(claimStatus: string | null, secondaryStatus: string | null): boolean {
+function isPendingFinalisation(claimStatus: string | null, secondaryStatus: string | null): boolean {
   const st = (claimStatus ?? '').toLowerCase();
   const ss = (secondaryStatus ?? '').toLowerCase();
   return st.includes('processing') && ss.includes('claim settled');
@@ -286,7 +292,6 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
   const hw = { handler };
   const excl = { notIn: ['Finalised', 'Cancelled', 'Repudiated'] };
 
-  // ── Action items ──
   const snapshots = await prisma.claimSnapshot.findMany({
     where: { snapshotDate, claimStatus: excl, ...hw },
     select: {
@@ -334,19 +339,16 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
     return pd !== 0 ? pd : (b.daysInStatus ?? 0) - (a.daysInStatus ?? 0);
   });
 
-  const pendingSettlement = allItems.filter(i => isPendingSettlement(i.claimStatus, i.secondaryStatus));
-  const actionItems = allItems.filter(i => !isPendingSettlement(i.claimStatus, i.secondaryStatus));
+  const pendingFinalisation = allItems.filter(i => isPendingFinalisation(i.claimStatus, i.secondaryStatus));
+  const actionItems = allItems.filter(i => !isPendingFinalisation(i.claimStatus, i.secondaryStatus));
 
-  // ── Portfolio ──
   const portWhere = { snapshotDate, claimStatus: excl, ...hw };
   const [openCount, agg, tatBreachCount, portClaims] = await Promise.all([
     prisma.claimSnapshot.count({ where: portWhere }),
     prisma.claimSnapshot.aggregate({ where: portWhere, _sum: { totalOs: true } }),
     prisma.claimSnapshot.count({ where: { ...portWhere, isTatBreach: true } }),
     prisma.claimSnapshot.findMany({
-      where: portWhere,
-      take: 150,
-      orderBy: { totalOs: 'desc' },
+      where: portWhere, take: 150, orderBy: { totalOs: 'desc' },
       select: {
         claimId: true, claimStatus: true, secondaryStatus: true, cause: true,
         daysInCurrentStatus: true, daysOpen: true, totalIncurred: true, totalOs: true,
@@ -363,9 +365,9 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
       })
     : [];
   const activeDelaySet = new Set(activeDelayRecs.map(d => d.claimId));
-  const activeDelaysCount = await (portClaimIds.length > 0
-    ? prisma.acknowledgedDelay.count({ where: { claimId: { in: portClaimIds }, isActive: true } })
-    : Promise.resolve(0));
+  const activeDelaysCount = portClaimIds.length > 0
+    ? await prisma.acknowledgedDelay.count({ where: { claimId: { in: portClaimIds }, isActive: true } })
+    : 0;
 
   const portfolioClaims: PortfolioClaimRow[] = portClaims.map(r => {
     const tatCfg = r.secondaryStatus ? slaMap.get(r.secondaryStatus) : null;
@@ -381,10 +383,8 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
     };
   });
 
-  // ── CS Score ──
   const csScore = await computeCsScore(handler, snapshotDate);
 
-  // ── TAT breach by status ──
   const breachRaw = await prisma.claimSnapshot.groupBy({
     by: ['secondaryStatus'],
     where: { snapshotDate, isTatBreach: true, ...hw },
@@ -396,7 +396,6 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
     count: r._count.claimId,
   }));
 
-  // ── Notification gap ──
   const [hGap, allGap] = await Promise.all([
     prisma.claimSnapshot.aggregate({
       where: { snapshotDate, ...hw, notificationGapDays: { not: null } },
@@ -407,13 +406,12 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
       _avg: { notificationGapDays: true },
     }),
   ]);
-  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const r1 = (n: number) => Math.round(n * 10) / 10;
   const notificationGap = {
-    avg: hGap._avg.notificationGapDays ? round1(Number(hGap._avg.notificationGapDays)) : null,
-    teamAvg: allGap._avg.notificationGapDays ? round1(Number(allGap._avg.notificationGapDays)) : null,
+    avg: hGap._avg.notificationGapDays ? r1(Number(hGap._avg.notificationGapDays)) : null,
+    teamAvg: allGap._avg.notificationGapDays ? r1(Number(allGap._avg.notificationGapDays)) : null,
   };
 
-  // ── Weekly trend (last 12 snapshots) ──
   const recentSnaps = await prisma.claimSnapshot.findMany({
     where: { snapshotDate: { lte: snapshotDate } },
     select: { snapshotDate: true },
@@ -424,385 +422,488 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
   const snapDatesAsc = [...recentSnaps].reverse();
   const weeklyTrend = await Promise.all(
     snapDatesAsc.map(async ({ snapshotDate: wsd }) => {
-      const sc = await computeCsScore(handler, wsd);
-      return { week: wsd.toISOString().split('T')[0], csScore: sc?.total ?? null };
+      const s = await computeCsScore(handler, wsd);
+      return { week: wsd.toISOString().split('T')[0], csScore: s?.total ?? null };
     }),
   );
 
   return {
-    handler,
-    snapshotDate,
-    actionItems,
-    pendingSettlement,
+    handler, snapshotDate, actionItems, pendingFinalisation,
     portfolioStats: {
       openClaims: openCount,
       totalOutstanding: agg._sum.totalOs ? Number(agg._sum.totalOs) : 0,
       tatBreaches: tatBreachCount,
       activeDelays: activeDelaysCount,
     },
-    portfolioClaims,
-    csScore,
-    tatBreaches,
-    notificationGap,
-    weeklyTrend,
+    portfolioClaims, csScore, tatBreaches, notificationGap, weeklyTrend,
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
 // ── Sheet builders ────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
-function buildActionSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSheet {
-  const ws: XLSX.WorkSheet = {};
-  const NC = isGroup ? 8 : 7; // columns
-  const colW = isGroup
-    ? [22, 14, 26, 24, 16, 8, 12, 12]
-    : [14, 26, 24, 16, 8, 12, 12];
-  ws['!cols'] = colW.map(w => ({ wch: w }));
-  let r = 0;
+function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+  const ws = wb.addWorksheet("Today's Action Items");
+  const NC = isGroup ? 8 : 7;
 
-  const label = isGroup
-    ? `Group Report — Today's Action Items — ${dataSet.map(d => d.handler).join(', ')}`
-    : `Today's Action Items — ${dataSet[0]?.handler ?? ''}`;
+  const widths = isGroup
+    ? [22, 15, 28, 26, 17, 7, 12, 13]
+    : [15, 28, 26, 17, 7, 12, 13];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
   const sd = dataSet[0]?.snapshotDate;
+  const label = isGroup
+    ? `Today's Action Items  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
+    : `Today's Action Items  —  ${dataSet[0]?.handler ?? ''}`;
 
-  mergedRow(ws, r++, label, NC, ST.titleNavy, 30);
-  mergedRow(ws, r++, `Generated: ${sd ? dateStr(sd) : '—'} · Claims pending settlement are excluded from this view`, NC, ST.subtitle, 14);
-  emptyRow(ws, r++, NC, ST.empty, 6);
+  // ── Sheet title ──
+  addMergedRow(ws, `   ${label}`, NC,
+    { bg: A.navy, fontColor: A.white, bold: true, size: 14 }, 32);
+  addMergedRow(ws, `   Generated: ${sd ? dateStr(sd) : '—'}  ·  Claims pending finalisation are shown in a separate sheet`,
+    NC, { bg: A.sectionBg, fontColor: A.gray, bold: false, size: 9, italic: true }, 14);
+  addSpacer(ws, NC, 8);
 
   const headers = isGroup
     ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT']
     : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'Priority', 'TAT'];
 
+  // ── Section writer ──
   function writeSection(
-    sectionLabel: string,
+    label: string,
     items: ActionItem[],
-    secSty: Sty,
-    rowSty: Sty,
-    boldSty: Sty,
-    currSty: Sty,
+    sectionBg: string,
+    rowBg: string,
+    rowBgAlt: string,
+    rowFont: string,
+    currencyFont: string,
+    borderArgb: string,
   ) {
     if (items.length === 0) return;
-    mergedRow(ws, r, `  ${sectionLabel}  (${items.length})`, NC, secSty, 20);
-    r++;
-    headers.forEach((h, c) => { wc(ws, r, c, h, ST.colHeader); });
-    rh(ws, r, 20); r++;
+
+    // Section banner
+    addMergedRow(ws, `   ${label}   (${items.length})`, NC,
+      { bg: sectionBg, fontColor: A.white, bold: true, size: 11 }, 24);
+
+    // Column headers — dark charcoal so they stand out from section banner above
+    addHeaderRow(ws, headers, A.charcoal, A.white, 22);
 
     items.forEach((item, idx) => {
-      const isAlt = idx % 2 === 1;
-      const rSty = isAlt ? (rowSty === ST.std ? ST.alt : rowSty) : rowSty;
-      const bSty = isAlt ? (boldSty === ST.stdBold ? ST.altBold : boldSty) : boldSty;
-      const cSty = isAlt ? (currSty === ST.stdCurrency ? ST.altCurrency : currSty) : currSty;
-      const tSty = tatSty(item.tatPosition);
-      const tLbl = tatLabel(item.tatPosition);
+      const bg = idx % 2 === 0 ? rowBg : rowBgAlt;
+      const tatBg =
+        item.tatPosition === 'breach' ? A.lightRed :
+        item.tatPosition === 'at-risk' ? A.lightAmber : A.lightGreen;
+      const tatFg =
+        item.tatPosition === 'breach' ? A.darkRed :
+        item.tatPosition === 'at-risk' ? A.darkAmber : A.darkGreen;
 
-      if (isGroup) {
-        wc(ws, r, 0, item.handler ?? '—', bSty);
-        wc(ws, r, 1, item.claimId, bSty);
-        wc(ws, r, 2, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 3, item.cause ?? '—', rSty);
-        wc(ws, r, 4, zarStr(item.totalIncurred), cSty);
-        wc(ws, r, 5, item.daysInStatus ?? '—', rSty);
-        wc(ws, r, 6, item.priority.toUpperCase(), rSty);
-        wc(ws, r, 7, tLbl, tSty);
-      } else {
-        wc(ws, r, 0, item.claimId, bSty);
-        wc(ws, r, 1, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 2, item.cause ?? '—', rSty);
-        wc(ws, r, 3, zarStr(item.totalIncurred), cSty);
-        wc(ws, r, 4, item.daysInStatus ?? '—', rSty);
-        wc(ws, r, 5, item.priority.toUpperCase(), rSty);
-        wc(ws, r, 6, tLbl, tSty);
-      }
-      rh(ws, r, 18); r++;
+      const row = ws.addRow([]);
+      row.height = 19;
+
+      const colData: Array<{ v: string | number | null; opts: CellOpts }> = isGroup
+        ? [
+            { v: item.handler ?? '—',              opts: { bg, fontColor: rowFont, bold: true,  border: borderArgb } },
+            { v: item.claimId,                     opts: { bg, fontColor: rowFont, bold: true,  border: borderArgb } },
+            { v: item.secondaryStatus ?? '—',      opts: { bg, fontColor: rowFont,              border: borderArgb } },
+            { v: item.cause ?? '—',                opts: { bg, fontColor: rowFont,              border: borderArgb } },
+            { v: zarStr(item.totalIncurred),        opts: { bg, fontColor: currencyFont, bold: true, h: 'right', border: borderArgb } },
+            { v: item.daysInStatus ?? '—',         opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: item.priority.toUpperCase(),      opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: tatLabel(item.tatPosition),       opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: borderArgb } },
+          ]
+        : [
+            { v: item.claimId,                     opts: { bg, fontColor: rowFont, bold: true,  border: borderArgb } },
+            { v: item.secondaryStatus ?? '—',      opts: { bg, fontColor: rowFont,              border: borderArgb } },
+            { v: item.cause ?? '—',                opts: { bg, fontColor: rowFont,              border: borderArgb } },
+            { v: zarStr(item.totalIncurred),        opts: { bg, fontColor: currencyFont, bold: true, h: 'right', border: borderArgb } },
+            { v: item.daysInStatus ?? '—',         opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: item.priority.toUpperCase(),      opts: { bg, fontColor: rowFont, h: 'center', border: borderArgb } },
+            { v: tatLabel(item.tatPosition),       opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: borderArgb } },
+          ];
+
+      colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));
     });
-    emptyRow(ws, r++, NC, ST.empty, 6);
+
+    addSpacer(ws, NC, 6);
   }
 
   if (isGroup) {
-    // Group: write per-handler sections
     for (const d of dataSet) {
-      mergedRow(ws, r, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
-      r++;
+      addMergedRow(ws, `   Handler: ${d.handler}`, NC,
+        { bg: A.charcoal, fontColor: A.white, bold: true, size: 11 }, 26);
+      addSpacer(ws, NC, 4);
+
       const critical = d.actionItems.filter(i => i.priority === 'critical');
       const urgent   = d.actionItems.filter(i => i.priority === 'urgent');
       const standard = d.actionItems.filter(i => i.priority === 'standard');
-      writeSection('⚡  CRITICAL ACTION', critical, ST.sectionCritical, ST.critical, ST.criticalBold, ST.critCurrency);
-      writeSection('⚠  URGENT',          urgent,   ST.sectionUrgent,   ST.urgent,   ST.urgentBold,   ST.urgCurrency);
-      writeSection('✓  STANDARD',        standard, ST.sectionStd,      ST.std,      ST.stdBold,      ST.stdCurrency);
+
+      writeSection('⚡  CRITICAL ACTION', critical, A.red,       A.lightRed,   'FFFEF2F2', A.darkRed,   A.darkRed,   A.redBorder);
+      writeSection('⚠  URGENT',          urgent,   A.darkAmber,  A.lightAmber, 'FFFFFBEB', A.darkAmber, A.darkAmber, A.amberBorder);
+      writeSection('✓  STANDARD',        standard, A.blue,       A.offWhite,   A.white,    A.darkGray,  A.navy,      A.border);
+
       if (d.actionItems.length === 0) {
-        mergedRow(ws, r++, '    All clear — no priority actions today.', NC, ST.subtitle, 16);
+        addMergedRow(ws, '   All clear — no priority actions today.', NC,
+          { bg: A.lightGreen, fontColor: A.darkGreen, bold: true, size: 10 }, 20);
       }
-      emptyRow(ws, r++, NC, ST.empty, 10);
+      addSpacer(ws, NC, 10);
     }
   } else {
     const d = dataSet[0];
-    if (!d) return ws;
+    if (!d) return;
     const critical = d.actionItems.filter(i => i.priority === 'critical');
     const urgent   = d.actionItems.filter(i => i.priority === 'urgent');
     const standard = d.actionItems.filter(i => i.priority === 'standard');
-    writeSection('⚡  CRITICAL ACTION', critical, ST.sectionCritical, ST.critical, ST.criticalBold, ST.critCurrency);
-    writeSection('⚠  URGENT',          urgent,   ST.sectionUrgent,   ST.urgent,   ST.urgentBold,   ST.urgCurrency);
-    writeSection('✓  STANDARD',        standard, ST.sectionStd,      ST.std,      ST.stdBold,      ST.stdCurrency);
+    writeSection('⚡  CRITICAL ACTION', critical, A.red,       A.lightRed,   'FFFEF2F2', A.darkRed,   A.darkRed,   A.redBorder);
+    writeSection('⚠  URGENT',          urgent,   A.darkAmber,  A.lightAmber, 'FFFFFBEB', A.darkAmber, A.darkAmber, A.amberBorder);
+    writeSection('✓  STANDARD',        standard, A.blue,       A.offWhite,   A.white,    A.darkGray,  A.navy,      A.border);
     if (d.actionItems.length === 0) {
-      mergedRow(ws, r++, '    All clear — no priority actions today.', NC, ST.subtitle, 16);
+      addMergedRow(ws, '   All clear — no priority actions today.', NC,
+        { bg: A.lightGreen, fontColor: A.darkGreen, bold: true, size: 10 }, 20);
     }
   }
-
-  setRef(ws, r - 1, NC - 1);
-  return ws;
 }
 
-function buildCsTatSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSheet {
-  const ws: XLSX.WorkSheet = {};
+function buildCsTatSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+  const ws = wb.addWorksheet('CS & TAT Health');
   const NC = 8;
-  ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 28 }, { wch: 14 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
-  let r = 0;
+  [30, 14, 30, 14, 30, 14, 14, 14].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  const label = isGroup
-    ? `Group Report — CS & TAT Health — ${dataSet.map(d => d.handler).join(', ')}`
-    : `CS & TAT Health — ${dataSet[0]?.handler ?? ''}`;
   const sd = dataSet[0]?.snapshotDate;
+  const label = isGroup
+    ? `CS & TAT Health  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
+    : `CS & TAT Health  —  ${dataSet[0]?.handler ?? ''}`;
 
-  mergedRow(ws, r++, label, NC, ST.titleTeal, 30);
-  mergedRow(ws, r++, `Generated: ${sd ? dateStr(sd) : '—'} · CS Score is out of 100 (4 components × 25 points each)`, NC, ST.subtitle, 14);
+  addMergedRow(ws, `   ${label}`, NC,
+    { bg: A.teal, fontColor: A.white, bold: true, size: 14 }, 32);
+  addMergedRow(ws, `   Generated: ${sd ? dateStr(sd) : '—'}  ·  CS Score is out of 100 (4 components × 25 points each)`,
+    NC, { bg: A.sectionBg, fontColor: A.gray, bold: false, size: 9, italic: true }, 14);
 
   for (const d of dataSet) {
-    emptyRow(ws, r++, NC, ST.empty, 10);
+    addSpacer(ws, NC, 10);
 
     if (isGroup) {
-      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
+      addMergedRow(ws, `   Handler: ${d.handler}`, NC,
+        { bg: A.charcoal, fontColor: A.white, bold: true, size: 11 }, 26);
+      addSpacer(ws, NC, 6);
     }
 
-    // ── CS Score KPI block ──
     const cs = d.csScore;
-    const trendDiff = cs?.lastMonth !== null && cs?.lastMonth !== undefined ? (cs.total - cs.lastMonth) : null;
+    const trendDiff = cs?.lastMonth != null ? cs.total - cs.lastMonth : null;
+    const totalGood = cs && cs.total >= 70;
+    const totalOk   = cs && cs.total >= 50 && cs.total < 70;
 
-    // Labels row
-    wc(ws, r, 0, 'CS SCORE', ST.kpiLabel);
-    mc(ws, r, 0, r, 1);
-    wc(ws, r, 2, 'SPEED', ST.kpiLabel);
-    mc(ws, r, 2, r, 3);
-    wc(ws, r, 4, 'QUALITY', ST.kpiLabel);
-    mc(ws, r, 4, r, 5);
-    wc(ws, r, 6, 'COVERAGE', ST.kpiLabel);
-    mc(ws, r, 6, r, 7);
-    rh(ws, r++, 14);
+    // ── KPI header labels ──
+    const lblRow = ws.addRow(['CS SCORE', '', 'SPEED', '', 'QUALITY', '', 'COVERAGE', '']);
+    lblRow.height = 16;
+    [1,3,5,7].forEach(c => {
+      const cell = lblRow.getCell(c);
+      cell.fill = sf(A.navy); cell.font = font(true, 8, A.offWhite) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+    });
+    [2,4,6,8].forEach(c => { lblRow.getCell(c).fill = sf(A.navy); });
+    ws.mergeCells(lblRow.number, 1, lblRow.number, 2);
+    ws.mergeCells(lblRow.number, 3, lblRow.number, 4);
+    ws.mergeCells(lblRow.number, 5, lblRow.number, 6);
+    ws.mergeCells(lblRow.number, 7, lblRow.number, 8);
 
-    // Values row
-    const totalScore = cs?.total ?? null;
-    const totalSty = totalScore !== null ? (totalScore >= 70 ? ST.kpiGood : totalScore >= 50 ? ST.kpiValue : ST.kpiBad) : ST.kpiValue;
-    wc(ws, r, 0, totalScore !== null ? `${totalScore}/100` : '—', totalSty);
-    mc(ws, r, 0, r, 1);
-    wc(ws, r, 2, cs ? `${cs.speed}/25` : '—', ST.kpiValue);
-    mc(ws, r, 2, r, 3);
-    wc(ws, r, 4, cs ? `${cs.quality}/25` : '—', ST.kpiValue);
-    mc(ws, r, 4, r, 5);
-    wc(ws, r, 6, cs ? `${cs.coverage}/25` : '—', ST.kpiValue);
-    mc(ws, r, 6, r, 7);
-    rh(ws, r++, 32);
+    // ── KPI values ──
+    const totalBg = totalGood ? A.lightGreen : totalOk ? A.lightAmber : cs ? A.lightRed : A.offWhite;
+    const totalFg = totalGood ? A.darkGreen  : totalOk ? A.darkAmber  : cs ? A.darkRed  : A.navy;
+    const valRow = ws.addRow([
+      cs ? `${cs.total}/100` : '—', '',
+      cs ? `${cs.speed}/25` : '—', '',
+      cs ? `${cs.quality}/25` : '—', '',
+      cs ? `${cs.coverage}/25` : '—', '',
+    ]);
+    valRow.height = 36;
+    ([[1, totalBg, totalFg], [3, A.sectionBg, A.navy], [5, A.sectionBg, A.navy], [7, A.sectionBg, A.navy]] as [number, string, string][])
+      .forEach(([c, bg, fg]) => {
+        const cell = valRow.getCell(c);
+        cell.fill = sf(bg);
+        cell.font = font(true, 20, fg) as ExcelJS.Font;
+        cell.alignment = { horizontal: 'center', vertical: 'middle' } as ExcelJS.Alignment;
+        cell.border = tb(A.border) as ExcelJS.Borders;
+        valRow.getCell(c + 1).fill = sf(bg);
+        valRow.getCell(c + 1).border = tb(A.border) as ExcelJS.Borders;
+      });
+    ws.mergeCells(valRow.number, 1, valRow.number, 2);
+    ws.mergeCells(valRow.number, 3, valRow.number, 4);
+    ws.mergeCells(valRow.number, 5, valRow.number, 6);
+    ws.mergeCells(valRow.number, 7, valRow.number, 8);
 
-    // Sub labels row (trend + finalisation)
-    wc(ws, r, 0, trendDiff !== null ? `${trendDiff >= 0 ? '+' : ''}${trendDiff} vs last month` : 'No prior data', ST.kpiSub);
-    mc(ws, r, 0, r, 1);
-    wc(ws, r, 2, 'Days to first payment', ST.kpiSub);
-    mc(ws, r, 2, r, 3);
-    wc(ws, r, 4, 'Reopen rate impact', ST.kpiSub);
-    mc(ws, r, 4, r, 5);
-    wc(ws, r, 6, 'TAT compliance', ST.kpiSub);
-    mc(ws, r, 6, r, 7);
-    rh(ws, r++, 13);
+    // ── KPI sub labels ──
+    const subRow = ws.addRow([
+      trendDiff !== null ? `${trendDiff >= 0 ? '+' : ''}${trendDiff} vs last month` : 'No prior data', '',
+      'Days to first payment', '', 'Reopen rate impact', '', 'TAT compliance', '',
+    ]);
+    subRow.height = 14;
+    [1,3,5,7].forEach(c => {
+      const cell = subRow.getCell(c);
+      cell.fill = sf(A.offWhite);
+      cell.font = font(false, 8, A.gray, true) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+      subRow.getCell(c + 1).fill = sf(A.offWhite);
+    });
+    ws.mergeCells(subRow.number, 1, subRow.number, 2);
+    ws.mergeCells(subRow.number, 3, subRow.number, 4);
+    ws.mergeCells(subRow.number, 5, subRow.number, 6);
+    ws.mergeCells(subRow.number, 7, subRow.number, 8);
 
-    // Finalisation KPI
-    wc(ws, r, 0, 'FINALISATION', ST.kpiLabel);
-    mc(ws, r, 0, r, 1);
-    wc(ws, r, 2, 'NOTIFICATION GAP', ST.kpiLabel);
-    mc(ws, r, 2, r, 3);
-    wc(ws, r, 4, 'TEAM NOTIFICATION AVG', ST.kpiLabel);
-    mc(ws, r, 4, r, 5);
-    for (let c = 6; c < NC; c++) wc(ws, r, c, '', ST.kpiLabel);
-    rh(ws, r++, 14);
+    addSpacer(ws, NC, 6);
+
+    // ── Row 2 of KPI: Finalisation + Notification gap ──
+    const lbl2 = ws.addRow(['FINALISATION', '', 'NOTIFICATION GAP', '', 'TEAM AVG', '', 'TREND', '']);
+    lbl2.height = 16;
+    [1,3,5,7].forEach(c => {
+      const cell = lbl2.getCell(c);
+      cell.fill = sf(A.navy); cell.font = font(true, 8, A.offWhite) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+    });
+    [2,4,6,8].forEach(c => { lbl2.getCell(c).fill = sf(A.navy); });
+    ws.mergeCells(lbl2.number, 1, lbl2.number, 2);
+    ws.mergeCells(lbl2.number, 3, lbl2.number, 4);
+    ws.mergeCells(lbl2.number, 5, lbl2.number, 6);
+    ws.mergeCells(lbl2.number, 7, lbl2.number, 8);
 
     const notifHigher = d.notificationGap.avg !== null && d.notificationGap.teamAvg !== null
       && d.notificationGap.avg > d.notificationGap.teamAvg;
-    wc(ws, r, 0, cs ? `${cs.finalisation}/25` : '—', ST.kpiValue);
-    mc(ws, r, 0, r, 1);
-    wc(ws, r, 2, d.notificationGap.avg !== null ? `${d.notificationGap.avg} days` : '—',
-      notifHigher ? ST.kpiBad : ST.kpiValue);
-    mc(ws, r, 2, r, 3);
-    wc(ws, r, 4, d.notificationGap.teamAvg !== null ? `${d.notificationGap.teamAvg} days` : '—', ST.kpiValue);
-    mc(ws, r, 4, r, 5);
-    for (let c = 6; c < NC; c++) wc(ws, r, c, '', ST.kpiValue);
-    rh(ws, r++, 32);
+    const notifBg = notifHigher ? A.lightRed : A.lightGreen;
+    const notifFg = notifHigher ? A.darkRed  : A.darkGreen;
 
-    wc(ws, r, 0, 'Avg days to finalise claims', ST.kpiSub);
-    mc(ws, r, 0, r, 1);
-    wc(ws, r, 2, notifHigher ? 'Above team average — review notification timing' : 'At or below team average', ST.kpiSub);
-    mc(ws, r, 2, r, 3);
-    wc(ws, r, 4, 'Benchmark for notification speed', ST.kpiSub);
-    mc(ws, r, 4, r, 5);
-    for (let c = 6; c < NC; c++) wc(ws, r, c, '', ST.kpiSub);
-    rh(ws, r++, 13);
+    const lastCs = d.weeklyTrend.length >= 2
+      ? (d.weeklyTrend[d.weeklyTrend.length - 1].csScore ?? null)
+      : null;
+    const prevCs = d.weeklyTrend.length >= 2
+      ? (d.weeklyTrend[d.weeklyTrend.length - 2].csScore ?? null)
+      : null;
+    const trendStr = lastCs !== null && prevCs !== null
+      ? `${lastCs > prevCs ? '↑' : lastCs < prevCs ? '↓' : '→'} ${lastCs}/100`
+      : '—';
+
+    const val2 = ws.addRow([
+      cs ? `${cs.finalisation}/25` : '—', '',
+      d.notificationGap.avg !== null ? `${d.notificationGap.avg} days` : '—', '',
+      d.notificationGap.teamAvg !== null ? `${d.notificationGap.teamAvg} days` : '—', '',
+      trendStr, '',
+    ]);
+    val2.height = 36;
+    [
+      [1, A.sectionBg, A.navy],
+      [3, notifBg, notifFg],
+      [5, A.offWhite, A.navy],
+      [7, A.offWhite, A.navy],
+    ].forEach(([c, bg, fg]) => {
+      const cell = val2.getCell(c as number);
+      cell.fill = sf(bg as string);
+      cell.font = font(true, 18, fg as string) as ExcelJS.Font;
+      cell.alignment = { horizontal: 'center', vertical: 'middle' } as ExcelJS.Alignment;
+      cell.border = tb(A.border) as ExcelJS.Borders;
+      val2.getCell((c as number) + 1).fill = sf(bg as string);
+      val2.getCell((c as number) + 1).border = tb(A.border) as ExcelJS.Borders;
+    });
+    ws.mergeCells(val2.number, 1, val2.number, 2);
+    ws.mergeCells(val2.number, 3, val2.number, 4);
+    ws.mergeCells(val2.number, 5, val2.number, 6);
+    ws.mergeCells(val2.number, 7, val2.number, 8);
+
+    const sub2 = ws.addRow(['Avg days to finalise', '', 'Your average', '', 'Team benchmark', '', 'vs previous period', '']);
+    sub2.height = 14;
+    [1,3,5,7].forEach(c => {
+      const cell = sub2.getCell(c);
+      cell.fill = sf(A.offWhite);
+      cell.font = font(false, 8, A.gray, true) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+      sub2.getCell(c + 1).fill = sf(A.offWhite);
+    });
+    ws.mergeCells(sub2.number, 1, sub2.number, 2);
+    ws.mergeCells(sub2.number, 3, sub2.number, 4);
+    ws.mergeCells(sub2.number, 5, sub2.number, 6);
+    ws.mergeCells(sub2.number, 7, sub2.number, 8);
 
     // ── Coaching note ──
     if (cs?.coachingNote) {
-      emptyRow(ws, r++, NC, ST.emptySect, 4);
-      mergedRow(ws, r++, `  COACHING NOTE: ${cs.coachingNote}`, NC, ST.coachBox, 30);
+      addSpacer(ws, NC, 6);
+      addMergedRow(ws, `   COACHING NOTE  —  ${cs.coachingNote}`, NC,
+        { bg: A.sectionBg, fontColor: A.navy, bold: true, size: 10 }, 26);
     }
 
     // ── TAT Breach Analysis ──
-    emptyRow(ws, r++, NC, ST.empty, 10);
-    mergedRow(ws, r++, '  TAT BREACH ANALYSIS', NC, ST.titleTeal, 22);
-    ['Secondary Status', 'Breach Count'].forEach((h, c) => wc(ws, r, c, h, ST.tealHeader));
-    for (let c = 2; c < NC; c++) wc(ws, r, c, '', ST.tealHeader);
-    rh(ws, r++, 20);
+    addSpacer(ws, NC, 10);
+    addMergedRow(ws, '   TAT BREACH ANALYSIS', NC,
+      { bg: A.teal, fontColor: A.white, bold: true, size: 11 }, 24);
+    addHeaderRow(ws, ['Secondary Status', 'Breach Count', '', '', '', '', '', ''].slice(0, NC),
+      A.charcoal, A.white, 22);
 
     if (d.tatBreaches.length === 0) {
-      mergedRow(ws, r++, '    No TAT breaches recorded.', NC, ST.subtitle, 16);
+      addMergedRow(ws, '   No TAT breaches recorded.', NC,
+        { bg: A.lightGreen, fontColor: A.darkGreen, bold: false, size: 10 }, 18);
     } else {
       d.tatBreaches.forEach((b, idx) => {
-        const sty = idx % 2 === 0 ? ST.std : ST.alt;
-        const bSty = idx % 2 === 0 ? ST.stdBold : ST.altBold;
-        wc(ws, r, 0, b.secondaryStatus, bSty);
-        wc(ws, r, 1, b.count, idx % 2 === 0 ? ST.breach : ST.breach);
-        for (let c = 2; c < NC; c++) wc(ws, r, c, '', sty);
-        rh(ws, r++, 18);
+        const bg = idx % 2 === 0 ? A.white : A.offWhite;
+        const row = ws.addRow([]);
+        row.height = 19;
+        sc(row.getCell(1), b.secondaryStatus, { bg, fontColor: A.darkGray, bold: true, border: A.border });
+        sc(row.getCell(2), b.count,           { bg: A.lightRed, fontColor: A.darkRed, bold: true, h: 'center', border: A.redBorder });
+        for (let c = 3; c <= NC; c++) { row.getCell(c).fill = sf(bg); }
       });
     }
 
     // ── Weekly CS Trend ──
-    emptyRow(ws, r++, NC, ST.empty, 10);
-    mergedRow(ws, r++, '  12-WEEK CS SCORE TREND', NC, ST.titleTeal, 22);
-    ['Week', 'CS Score'].forEach((h, c) => wc(ws, r, c, h, ST.tealHeader));
-    for (let c = 2; c < NC; c++) wc(ws, r, c, '', ST.tealHeader);
-    rh(ws, r++, 20);
+    addSpacer(ws, NC, 10);
+    addMergedRow(ws, '   12-WEEK CS SCORE TREND', NC,
+      { bg: A.teal, fontColor: A.white, bold: true, size: 11 }, 24);
+    addHeaderRow(ws, ['Week', 'CS Score', '', '', '', '', '', ''].slice(0, NC),
+      A.charcoal, A.white, 22);
 
     if (d.weeklyTrend.length === 0) {
-      mergedRow(ws, r++, '    No trend data available.', NC, ST.subtitle, 16);
+      addMergedRow(ws, '   No trend data available.', NC,
+        { bg: A.offWhite, fontColor: A.gray, bold: false, size: 10 }, 18);
     } else {
       d.weeklyTrend.forEach((pt, idx) => {
-        const sty = idx % 2 === 0 ? ST.std : ST.alt;
+        const bg = idx % 2 === 0 ? A.white : A.offWhite;
         const score = pt.csScore;
-        const scoreSty = score !== null
-          ? (score >= 70 ? ST.onTrack : score >= 50 ? ST.atRisk : ST.breach)
-          : ST.std;
-        wc(ws, r, 0, pt.week, sty);
-        wc(ws, r, 1, score !== null ? score : '—', scoreSty);
-        for (let c = 2; c < NC; c++) wc(ws, r, c, '', sty);
-        rh(ws, r++, 18);
+        const scoreBg = score !== null ? (score >= 70 ? A.lightGreen : score >= 50 ? A.lightAmber : A.lightRed) : A.offWhite;
+        const scoreFg = score !== null ? (score >= 70 ? A.darkGreen : score >= 50 ? A.darkAmber : A.darkRed) : A.gray;
+        const row = ws.addRow([]);
+        row.height = 19;
+        sc(row.getCell(1), pt.week,                           { bg, fontColor: A.darkGray, border: A.border });
+        sc(row.getCell(2), score !== null ? score : '—', { bg: scoreBg, fontColor: scoreFg, bold: true, h: 'center', border: A.border });
+        for (let c = 3; c <= NC; c++) { row.getCell(c).fill = sf(bg); }
       });
     }
   }
-
-  setRef(ws, r - 1, NC - 1);
-  return ws;
 }
 
-function buildPortfolioSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSheet {
-  const ws: XLSX.WorkSheet = {};
+function buildPortfolioSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+  const ws = wb.addWorksheet('My Portfolio');
   const NC = isGroup ? 9 : 8;
-  const colW = isGroup
-    ? [22, 14, 16, 26, 22, 8, 16, 16, 12]
-    : [14, 16, 26, 22, 8, 16, 16, 12];
-  ws['!cols'] = colW.map(w => ({ wch: w }));
-  let r = 0;
+  const widths = isGroup
+    ? [22, 15, 17, 28, 24, 7, 17, 17, 12]
+    : [15, 17, 28, 24, 7, 17, 17, 12];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  const label = isGroup
-    ? `Group Report — My Portfolio — ${dataSet.map(d => d.handler).join(', ')}`
-    : `My Portfolio — ${dataSet[0]?.handler ?? ''}`;
   const sd = dataSet[0]?.snapshotDate;
+  const label = isGroup
+    ? `My Portfolio  —  Group Report  (${dataSet.map(d => d.handler).join(', ')})`
+    : `My Portfolio  —  ${dataSet[0]?.handler ?? ''}`;
 
-  mergedRow(ws, r++, label, NC, ST.titleNavy, 30);
-  mergedRow(ws, r++, `Generated: ${sd ? dateStr(sd) : '—'} · Showing up to 150 claims per handler, ordered by outstanding amount`, NC, ST.subtitle, 14);
-  emptyRow(ws, r++, NC, ST.empty, 6);
+  addMergedRow(ws, `   ${label}`, NC,
+    { bg: A.navy, fontColor: A.white, bold: true, size: 14 }, 32);
+  addMergedRow(ws,
+    `   Generated: ${sd ? dateStr(sd) : '—'}  ·  Up to 150 claims per handler, ordered by outstanding amount`,
+    NC, { bg: A.sectionBg, fontColor: A.gray, bold: false, size: 9, italic: true }, 14);
 
   const headers = isGroup
-    ? ['Handler', 'Claim ID', 'Status', 'Secondary Status', 'Cause', 'Days Open', 'Total Incurred', 'Outstanding', 'TAT']
-    : ['Claim ID', 'Status', 'Secondary Status', 'Cause', 'Days Open', 'Total Incurred', 'Outstanding', 'TAT'];
+    ? ['Handler', 'Claim ID', 'Status', 'Secondary Status', 'Cause', 'Days', 'Total Incurred', 'Outstanding', 'TAT']
+    : ['Claim ID', 'Status', 'Secondary Status', 'Cause', 'Days', 'Total Incurred', 'Outstanding', 'TAT'];
 
   for (const d of dataSet) {
+    addSpacer(ws, NC, 10);
+
     if (isGroup) {
-      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
+      addMergedRow(ws, `   Handler: ${d.handler}`, NC,
+        { bg: A.charcoal, fontColor: A.white, bold: true, size: 11 }, 26);
+      addSpacer(ws, NC, 4);
     }
 
-    // Stats block
+    // Stats block (4 KPI tiles)
     const stats = d.portfolioStats;
-    const statCols = ['Open Claims', 'Total Outstanding', 'TAT Breaches', 'Active Delays'];
-    statCols.forEach((lbl, c) => wc(ws, r, c, lbl, ST.statLabel));
-    for (let c = 4; c < NC; c++) wc(ws, r, c, '', ST.empty);
-    rh(ws, r++, 16);
-
-    const statVals = [
-      { v: stats.openClaims, sty: ST.statValue },
-      { v: zarStr(stats.totalOutstanding), sty: ST.statValue },
-      { v: stats.tatBreaches, sty: stats.tatBreaches > 0 ? ST.statValueBad : ST.statValue },
-      { v: stats.activeDelays, sty: stats.activeDelays > 0 ? ST.statValueAmber : ST.statValue },
+    const statDefs: Array<{ label: string; value: string | number; bad?: boolean; warn?: boolean }> = [
+      { label: 'OPEN CLAIMS',       value: stats.openClaims },
+      { label: 'TOTAL OUTSTANDING', value: zarStr(stats.totalOutstanding) },
+      { label: 'TAT BREACHES',      value: stats.tatBreaches, bad: stats.tatBreaches > 0 },
+      { label: 'ACTIVE DELAYS',     value: stats.activeDelays, warn: stats.activeDelays > 0 },
     ];
-    statVals.forEach(({ v, sty }, c) => wc(ws, r, c, v, sty));
-    for (let c = 4; c < NC; c++) wc(ws, r, c, '', ST.empty);
-    rh(ws, r++, 24);
 
-    emptyRow(ws, r++, NC, ST.empty, 8);
+    const statLabelRow = ws.addRow(statDefs.map(s => s.label));
+    statLabelRow.height = 16;
+    statDefs.forEach((_, i) => {
+      const cell = statLabelRow.getCell(i + 1);
+      cell.fill = sf(A.navy);
+      cell.font = font(true, 8, A.offWhite) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+    });
+    for (let c = 5; c <= NC; c++) { statLabelRow.getCell(c).fill = sf(A.navy); }
 
-    // Headers
-    headers.forEach((h, c) => wc(ws, r, c, h, ST.colHeader));
-    rh(ws, r++, 20);
+    const statValRow = ws.addRow(statDefs.map(s => s.value));
+    statValRow.height = 32;
+    statDefs.forEach((s, i) => {
+      const bg = s.bad ? A.red : s.warn ? A.amber : A.blue;
+      const cell = statValRow.getCell(i + 1);
+      cell.fill = sf(bg);
+      cell.font = font(true, 16, A.white) as ExcelJS.Font;
+      cell.alignment = align('center', 'middle') as ExcelJS.Alignment;
+      cell.border = tb(A.navy) as ExcelJS.Borders;
+    });
+    for (let c = 5; c <= NC; c++) { statValRow.getCell(c).fill = sf(A.navy); }
+
+    addSpacer(ws, NC, 8);
+    addHeaderRow(ws, headers, A.charcoal, A.white, 22);
 
     if (d.portfolioClaims.length === 0) {
-      mergedRow(ws, r++, '    No claims in portfolio.', NC, ST.subtitle, 16);
+      addMergedRow(ws, '   No claims in portfolio.', NC,
+        { bg: A.offWhite, fontColor: A.gray, bold: false, size: 10 }, 18);
     } else {
       d.portfolioClaims.forEach((claim, idx) => {
-        const isAlt = idx % 2 === 1;
-        const rSty = isAlt ? ST.alt : ST.std;
-        const bSty = isAlt ? ST.altBold : ST.stdBold;
-        const cSty = isAlt ? ST.altCurrency : ST.stdCurrency;
-        const tSty = tatSty(claim.tatPosition);
-        const tLbl = tatLabel(claim.tatPosition);
+        const bg = idx % 2 === 0 ? A.white : A.offWhite;
+        const tatBg =
+          claim.tatPosition === 'breach' ? A.lightRed :
+          claim.tatPosition === 'at-risk' ? A.lightAmber : A.lightGreen;
+        const tatFg =
+          claim.tatPosition === 'breach' ? A.darkRed :
+          claim.tatPosition === 'at-risk' ? A.darkAmber : A.darkGreen;
 
-        if (isGroup) {
-          wc(ws, r, 0, claim.handler ?? '—', bSty);
-          wc(ws, r, 1, claim.claimId, bSty);
-          wc(ws, r, 2, claim.claimStatus ?? '—', rSty);
-          wc(ws, r, 3, claim.secondaryStatus ?? '—', rSty);
-          wc(ws, r, 4, claim.cause ?? '—', rSty);
-          wc(ws, r, 5, claim.daysOpen ?? '—', rSty);
-          wc(ws, r, 6, zarStr(claim.totalIncurred), cSty);
-          wc(ws, r, 7, zarStr(claim.totalOs), cSty);
-          wc(ws, r, 8, tLbl, tSty);
-        } else {
-          wc(ws, r, 0, claim.claimId, bSty);
-          wc(ws, r, 1, claim.claimStatus ?? '—', rSty);
-          wc(ws, r, 2, claim.secondaryStatus ?? '—', rSty);
-          wc(ws, r, 3, claim.cause ?? '—', rSty);
-          wc(ws, r, 4, claim.daysOpen ?? '—', rSty);
-          wc(ws, r, 5, zarStr(claim.totalIncurred), cSty);
-          wc(ws, r, 6, zarStr(claim.totalOs), cSty);
-          wc(ws, r, 7, tLbl, tSty);
-        }
-        rh(ws, r++, 18);
+        const row = ws.addRow([]);
+        row.height = 19;
+
+        const colData: Array<{ v: string | number | null; opts: CellOpts }> = isGroup
+          ? [
+              { v: claim.handler ?? '—',          opts: { bg, fontColor: A.navy, bold: true, border: A.border } },
+              { v: claim.claimId,                  opts: { bg, fontColor: A.navy, bold: true, border: A.border } },
+              { v: claim.claimStatus ?? '—',       opts: { bg, fontColor: A.darkGray, border: A.border } },
+              { v: claim.secondaryStatus ?? '—',   opts: { bg, fontColor: A.darkGray, border: A.border } },
+              { v: claim.cause ?? '—',             opts: { bg, fontColor: A.darkGray, border: A.border } },
+              { v: claim.daysOpen ?? '—',          opts: { bg, fontColor: A.darkGray, h: 'center', border: A.border } },
+              { v: zarStr(claim.totalIncurred),     opts: { bg, fontColor: A.navy, bold: true, h: 'right', border: A.border } },
+              { v: zarStr(claim.totalOs),           opts: { bg, fontColor: A.navy, bold: true, h: 'right', border: A.border } },
+              { v: tatLabel(claim.tatPosition),    opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: A.border } },
+            ]
+          : [
+              { v: claim.claimId,                  opts: { bg, fontColor: A.navy, bold: true, border: A.border } },
+              { v: claim.claimStatus ?? '—',       opts: { bg, fontColor: A.darkGray, border: A.border } },
+              { v: claim.secondaryStatus ?? '—',   opts: { bg, fontColor: A.darkGray, border: A.border } },
+              { v: claim.cause ?? '—',             opts: { bg, fontColor: A.darkGray, border: A.border } },
+              { v: claim.daysOpen ?? '—',          opts: { bg, fontColor: A.darkGray, h: 'center', border: A.border } },
+              { v: zarStr(claim.totalIncurred),     opts: { bg, fontColor: A.navy, bold: true, h: 'right', border: A.border } },
+              { v: zarStr(claim.totalOs),           opts: { bg, fontColor: A.navy, bold: true, h: 'right', border: A.border } },
+              { v: tatLabel(claim.tatPosition),    opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: A.border } },
+            ];
+
+        colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));
       });
     }
 
-    if (isGroup) emptyRow(ws, r++, NC, ST.empty, 12);
+    if (isGroup) addSpacer(ws, NC, 10);
   }
-
-  setRef(ws, r - 1, NC - 1);
-  return ws;
 }
 
-function buildPendingSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkSheet {
-  const ws: XLSX.WorkSheet = {};
+function buildPendingFinalisationSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+  const ws = wb.addWorksheet('Pending Finalisation');
   const NC = isGroup ? 7 : 6;
-  const colW = isGroup
-    ? [22, 14, 26, 24, 16, 8, 12]
-    : [14, 26, 24, 16, 8, 12];
-  ws['!cols'] = colW.map(w => ({ wch: w }));
-  let r = 0;
+  const widths = isGroup
+    ? [22, 15, 28, 26, 17, 7, 13]
+    : [15, 28, 26, 17, 7, 13];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const sd = dataSet[0]?.snapshotDate;
-  const totalCount = dataSet.reduce((s, d) => s + d.pendingSettlement.length, 0);
+  const totalCount = dataSet.reduce((s, d) => s + d.pendingFinalisation.length, 0);
 
-  mergedRow(ws, r++, `Pending Settlement — Claims in Processing`, NC, ST.titlePurple, 30);
-  mergedRow(ws, r++, `Generated: ${sd ? dateStr(sd) : '—'} · ${totalCount} claim${totalCount !== 1 ? 's' : ''} marked as "Claim Settled" but still in Processing status`, NC, ST.subtitle, 14);
-  emptyRow(ws, r++, NC, ST.empty, 6);
+  addMergedRow(ws, '   Pending Finalisation  —  Claims Settled', NC,
+    { bg: A.purple, fontColor: A.white, bold: true, size: 14 }, 32);
+  addMergedRow(ws,
+    `   Generated: ${sd ? dateStr(sd) : '—'}  ·  ${totalCount} claim${totalCount !== 1 ? 's' : ''} marked as "Claim Settled" but still in Processing status  ·  Excluded from Today's Action Items`,
+    NC, { bg: A.lightPurple, fontColor: A.darkPurple, bold: false, size: 9, italic: true }, 14);
+  addSpacer(ws, NC, 8);
 
   const headers = isGroup
     ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Days', 'TAT']
@@ -810,63 +911,73 @@ function buildPendingSheet(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkS
 
   for (const d of dataSet) {
     if (isGroup) {
-      mergedRow(ws, r++, `  Handler: ${d.handler}`, NC, ST.sectionDivider, 24);
+      addMergedRow(ws, `   Handler: ${d.handler}`, NC,
+        { bg: A.charcoal, fontColor: A.white, bold: true, size: 11 }, 26);
+      addSpacer(ws, NC, 4);
     }
 
-    if (d.pendingSettlement.length === 0) {
-      mergedRow(ws, r++, '    No pending settlement claims.', NC, ST.subtitle, 16);
-      if (isGroup) emptyRow(ws, r++, NC, ST.empty, 8);
+    if (d.pendingFinalisation.length === 0) {
+      addMergedRow(ws, '   No pending finalisation claims.', NC,
+        { bg: A.lightPurple, fontColor: A.darkPurple, bold: false, size: 10 }, 18);
+      if (isGroup) addSpacer(ws, NC, 8);
       continue;
     }
 
-    headers.forEach((h, c) => wc(ws, r, c, h, ST.purpleHeader));
-    rh(ws, r++, 20);
+    addHeaderRow(ws, headers, A.purple, A.white, 22);
 
-    d.pendingSettlement.forEach((item, idx) => {
-      const rSty = ST.settRow;
-      const bSty = ST.settBold;
-      const cSty = ST.settCurrency;
-      const tSty = tatSty(item.tatPosition);
-      const tLbl = tatLabel(item.tatPosition);
+    d.pendingFinalisation.forEach((item, idx) => {
+      const bg = idx % 2 === 0 ? A.lightPurple : A.white;
+      const tatBg =
+        item.tatPosition === 'breach' ? A.lightRed :
+        item.tatPosition === 'at-risk' ? A.lightAmber : A.lightGreen;
+      const tatFg =
+        item.tatPosition === 'breach' ? A.darkRed :
+        item.tatPosition === 'at-risk' ? A.darkAmber : A.darkGreen;
 
-      if (isGroup) {
-        wc(ws, r, 0, item.handler ?? '—', bSty);
-        wc(ws, r, 1, item.claimId, bSty);
-        wc(ws, r, 2, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 3, item.cause ?? '—', rSty);
-        wc(ws, r, 4, zarStr(item.totalIncurred), cSty);
-        wc(ws, r, 5, item.daysInStatus ?? '—', rSty);
-        wc(ws, r, 6, tLbl, ST.settBadge);
-      } else {
-        wc(ws, r, 0, item.claimId, bSty);
-        wc(ws, r, 1, item.secondaryStatus ?? '—', rSty);
-        wc(ws, r, 2, item.cause ?? '—', rSty);
-        wc(ws, r, 3, zarStr(item.totalIncurred), cSty);
-        wc(ws, r, 4, item.daysInStatus ?? '—', rSty);
-        wc(ws, r, 5, tLbl, ST.settBadge);
-      }
-      rh(ws, r++, 18);
+      const row = ws.addRow([]);
+      row.height = 19;
+
+      const colData: Array<{ v: string | number | null; opts: CellOpts }> = isGroup
+        ? [
+            { v: item.handler ?? '—',          opts: { bg, fontColor: A.darkPurple, bold: true, border: A.purpleBorder } },
+            { v: item.claimId,                  opts: { bg, fontColor: A.darkPurple, bold: true, border: A.purpleBorder } },
+            { v: item.secondaryStatus ?? '—',   opts: { bg, fontColor: A.darkPurple, border: A.purpleBorder } },
+            { v: item.cause ?? '—',             opts: { bg, fontColor: A.darkPurple, border: A.purpleBorder } },
+            { v: zarStr(item.totalIncurred),     opts: { bg, fontColor: A.darkPurple, bold: true, h: 'right', border: A.purpleBorder } },
+            { v: item.daysInStatus ?? '—',      opts: { bg, fontColor: A.darkPurple, h: 'center', border: A.purpleBorder } },
+            { v: tatLabel(item.tatPosition),    opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: A.purpleBorder } },
+          ]
+        : [
+            { v: item.claimId,                  opts: { bg, fontColor: A.darkPurple, bold: true, border: A.purpleBorder } },
+            { v: item.secondaryStatus ?? '—',   opts: { bg, fontColor: A.darkPurple, border: A.purpleBorder } },
+            { v: item.cause ?? '—',             opts: { bg, fontColor: A.darkPurple, border: A.purpleBorder } },
+            { v: zarStr(item.totalIncurred),     opts: { bg, fontColor: A.darkPurple, bold: true, h: 'right', border: A.purpleBorder } },
+            { v: item.daysInStatus ?? '—',      opts: { bg, fontColor: A.darkPurple, h: 'center', border: A.purpleBorder } },
+            { v: tatLabel(item.tatPosition),    opts: { bg: tatBg, fontColor: tatFg, bold: true, h: 'center', border: A.purpleBorder } },
+          ];
+
+      colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));
     });
 
-    if (isGroup) emptyRow(ws, r++, NC, ST.empty, 10);
+    if (isGroup) addSpacer(ws, NC, 10);
   }
 
-  if (totalCount === 0) {
-    mergedRow(ws, r++, '    No pending settlement claims across all selected handlers.', NC, ST.subtitle, 20);
+  if (totalCount === 0 && !isGroup) {
+    addMergedRow(ws, '   No pending finalisation claims.', NC,
+      { bg: A.lightPurple, fontColor: A.darkPurple, bold: false, size: 10 }, 20);
   }
-
-  setRef(ws, r - 1, NC - 1);
-  return ws;
 }
 
-function buildWorkbook(dataSet: HandlerData[], isGroup: boolean): XLSX.WorkBook {
-  const wb = XLSX.utils.book_new();
-  wb.Props = { Title: isGroup ? 'Group Daily Report' : `${dataSet[0]?.handler ?? 'Handler'} Daily Report` };
+function buildWorkbook(dataSet: HandlerData[], isGroup: boolean): ExcelJS.Workbook {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'SEB Hub';
+  wb.created = new Date();
+  wb.modified = new Date();
 
-  XLSX.utils.book_append_sheet(wb, buildActionSheet(dataSet, isGroup), 'Today\'s Action Items');
-  XLSX.utils.book_append_sheet(wb, buildCsTatSheet(dataSet, isGroup), 'CS & TAT Health');
-  XLSX.utils.book_append_sheet(wb, buildPortfolioSheet(dataSet, isGroup), 'My Portfolio');
-  XLSX.utils.book_append_sheet(wb, buildPendingSheet(dataSet, isGroup), 'Pending Settlement');
+  buildActionSheet(wb, dataSet, isGroup);
+  buildCsTatSheet(wb, dataSet, isGroup);
+  buildPortfolioSheet(wb, dataSet, isGroup);
+  buildPendingFinalisationSheet(wb, dataSet, isGroup);
 
   return wb;
 }
@@ -906,7 +1017,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request: provide handler or handlers' }, { status: 400 });
     }
 
-    // Enforce role restriction for CLAIMS_TECHNICIAN
     if (ctx.role === 'CLAIMS_TECHNICIAN') {
       const ownName = ctx.fullName ?? '';
       handlerNames = handlerNames.filter(h => h === ownName);
@@ -918,14 +1028,14 @@ export async function POST(request: NextRequest) {
     );
 
     const wb = buildWorkbook(dataSet, reportType === 'group');
-    const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer', cellStyles: true });
+    const buffer = await wb.xlsx.writeBuffer();
 
     const today = new Date().toISOString().split('T')[0];
     const filename = reportType === 'group'
       ? `Group_Report_${today}.xlsx`
       : `${handlerNames[0].replace(/\s+/g, '_')}_Daily_Report_${today}.xlsx`;
 
-    return new NextResponse(buffer, {
+    return new NextResponse(buffer as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
