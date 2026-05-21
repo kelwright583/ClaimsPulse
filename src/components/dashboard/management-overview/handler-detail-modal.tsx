@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, AlertCircle, AlertTriangle, CheckCircle, Download, Loader2 } from 'lucide-react';
 
 interface ActionItem {
@@ -184,7 +185,7 @@ export function HandlerDetailModal({ handler, toDate, fromDate, isComparing, onC
 
   const cmp = data?.comparison;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative bg-white w-full sm:max-w-3xl sm:mx-4 sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -355,6 +356,7 @@ export function HandlerDetailModal({ handler, toDate, fromDate, isComparing, onC
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
