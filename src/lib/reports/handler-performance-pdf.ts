@@ -448,7 +448,7 @@ function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
     { label: 'Urgent Claims',   value: String(d.metrics.urgentCurrent),   accent: C.amber,
       curr: d.metrics.urgentCurrent,   prev: d.metrics.urgentPrevious,   lowerIsBetter: true },
     { label: 'Standard Claims', value: String(d.metrics.standardCurrent), accent: C.blue,
-      curr: d.metrics.standardCurrent, prev: d.metrics.standardPrevious, lowerIsBetter: false },
+      curr: d.metrics.standardCurrent, prev: d.metrics.standardPrevious, lowerIsBetter: true },
     // Row 3 — financials & outcomes with comparison
     { label: 'TAT Breaches',    value: String(d.metrics.tatBreachesCurrent), accent: C.darkRed,
       curr: d.metrics.tatBreachesCurrent, prev: d.metrics.tatBreachesPrevious, lowerIsBetter: true },

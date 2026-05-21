@@ -223,7 +223,7 @@ export function HandlerDetailModal({ handler, toDate, fromDate, isComparing, onC
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
                 <DeltaMetricCard label="Critical Claims" current={data.metrics.criticalCurrent} previous={cmp.criticalPrevious} lowerIsBetter />
                 <DeltaMetricCard label="Urgent Claims" current={data.metrics.urgentCurrent} previous={cmp.urgentPrevious} lowerIsBetter />
-                <DeltaMetricCard label="Standard Claims" current={data.metrics.standardCurrent} previous={cmp.standardPrevious} lowerIsBetter={false} />
+                <DeltaMetricCard label="Standard Claims" current={data.metrics.standardCurrent} previous={cmp.standardPrevious} lowerIsBetter />
                 <DeltaMetricCard label="TAT Breaches" current={data.metrics.tatBreachesCurrent} previous={cmp.tatBreachesPrevious} lowerIsBetter />
                 <DeltaMetricCard label="Total Outstanding" current={data.metrics.totalOsCurrent} previous={cmp.totalOsPrevious} lowerIsBetter />
                 <DeltaMetricCard label="Claims Finalised" current={data.metrics.finalisedCurrent} previous={cmp.finalisedPrevious} lowerIsBetter={false} />
