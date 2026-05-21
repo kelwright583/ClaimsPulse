@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { FileText, TrendingUp, CheckCircle, Clock, DollarSign, AlertTriangle } from 'lucide-react';
-import { CompareBar } from '@/components/ui/compare-bar';
 import { useComparison } from '@/contexts/ComparisonContext';
 import { HandlerDetailModal } from './handler-detail-modal';
 
@@ -197,8 +196,6 @@ export function ManagementOverviewClient() {
 
   return (
     <div className="space-y-6">
-      <CompareBar />
-
       {data.asOf && (
         <p className="text-xs text-[#6B7280]">
           Data as of{' '}

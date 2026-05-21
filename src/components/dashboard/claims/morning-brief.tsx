@@ -6,7 +6,6 @@ import type { UserRole } from '@/types/roles';
 import type { FilterState } from '@/components/dashboard/types';
 import { DrillDownModal } from '@/components/drill-down/DrillDownModal';
 import type { DrillDownContext } from '@/components/drill-down/types';
-import { CompareBar } from '@/components/ui/compare-bar';
 import { useComparison } from '@/contexts/ComparisonContext';
 
 interface AlertCardsShape {
@@ -226,9 +225,6 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
   return (
     <>
       <div className="space-y-8">
-        {/* Compare bar */}
-        <CompareBar />
-
         {/* Section 1 — Alert cards */}
         <section>
           <h2 className="text-base font-semibold text-[#0D2761] mb-4">

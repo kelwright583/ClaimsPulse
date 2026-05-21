@@ -10,6 +10,7 @@ import { ViewSwitcher } from './view-switcher';
 import { SubViewSwitcher } from './sub-view-switcher';
 import { FilterBar } from './filter-bar';
 import { ExportModal } from './my-work/export-modal';
+import { CompareBar } from '@/components/ui/compare-bar';
 
 // Sub-view components — management overview
 import { ManagementOverviewClient } from './management-overview/management-overview-client';
@@ -187,6 +188,9 @@ export function DashboardClient({ role, userId, fullName }: DashboardClientProps
           <ViewSwitcher role={role} active={activeView} onChange={handleViewChange} />
         </div>
       </div>
+
+      {/* Compare bar — always visible across all views */}
+      <CompareBar />
 
       {/* Level 2 — sub-view tabs (hidden for standalone views) */}
       {activeView !== 'morning-brief' && (
