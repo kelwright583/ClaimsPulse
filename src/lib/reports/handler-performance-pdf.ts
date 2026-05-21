@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { loadPoppins } from './pdf-fonts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ export interface HandlerPerformancePDFData {
   }>;
 
   criticalItems: Array<{ claimId: string; secondaryStatus: string; daysInStatus: number; outstanding: number; tatStatus: 'BREACH' | 'AT RISK' | 'ON TRACK' }>;
-  urgentItems: Array<{ claimId: string; secondaryStatus: string; daysInStatus: number; outstanding: number; tatStatus: 'BREACH' | 'AT RISK' | 'ON TRACK' }>;
+  urgentItems:   Array<{ claimId: string; secondaryStatus: string; daysInStatus: number; outstanding: number; tatStatus: 'BREACH' | 'AT RISK' | 'ON TRACK' }>;
   standardItems: Array<{ claimId: string; secondaryStatus: string; daysInStatus: number; outstanding: number; tatStatus: 'BREACH' | 'AT RISK' | 'ON TRACK' }>;
 
   portfolio: { critical: number; urgent: number; standard: number; finalised: number; totalOpen: number };
@@ -50,108 +51,205 @@ export interface HandlerPerformancePDFData {
   finalisedInPeriod: number;
 }
 
-// ── Colours ───────────────────────────────────────────────────────────────────
+// ── Palette (matches the app's Tailwind palette exactly) ──────────────────────
 
 const C = {
-  navy: [13, 39, 97] as [number, number, number],
-  blue: [30, 91, 198] as [number, number, number],
-  gold: [245, 168, 0] as [number, number, number],
-  white: [255, 255, 255] as [number, number, number],
-  lightGray: [244, 246, 250] as [number, number, number],
-  gray: [107, 114, 128] as [number, number, number],
-  red: [220, 38, 38] as [number, number, number],
-  darkRed: [153, 27, 27] as [number, number, number],
-  lightRed: [254, 226, 226] as [number, number, number],
-  green: [22, 163, 74] as [number, number, number],
-  darkGreen: [22, 101, 52] as [number, number, number],
-  lightGreen: [220, 252, 231] as [number, number, number],
-  amber: [245, 158, 11] as [number, number, number],
+  navy:       [13, 39, 97]    as [number, number, number],
+  blue:       [30, 91, 198]   as [number, number, number],
+  gold:       [245, 168, 0]   as [number, number, number],
+  white:      [255, 255, 255] as [number, number, number],
+  pageBg:     [248, 250, 255] as [number, number, number],  // #F8FAFF
+  cardBorder: [232, 238, 248] as [number, number, number],  // #E8EEF8
+  lightGray:  [244, 246, 250] as [number, number, number],  // #F4F6FA
+  gray:       [107, 114, 128] as [number, number, number],  // #6B7280
+  dimGray:    [156, 163, 175] as [number, number, number],  // #9CA3AF
+  red:        [220, 38, 38]   as [number, number, number],
+  darkRed:    [153, 27, 27]   as [number, number, number],
+  lightRed:   [254, 242, 242] as [number, number, number],
+  green:      [22, 163, 74]   as [number, number, number],
+  darkGreen:  [22, 101, 52]   as [number, number, number],
+  lightGreen: [240, 255, 244] as [number, number, number],
+  amber:      [245, 158, 11]  as [number, number, number],
   lightAmber: [255, 251, 235] as [number, number, number],
-  lightBlue: [239, 246, 255] as [number, number, number],
+  lightBlue:  [239, 246, 255] as [number, number, number],
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Font helpers ──────────────────────────────────────────────────────────────
 
-function rgb(doc: jsPDF, color: [number, number, number], fill = true) {
-  if (fill) doc.setFillColor(color[0], color[1], color[2]);
-  else doc.setTextColor(color[0], color[1], color[2]);
-  return doc;
+type FontStyle = 'normal' | 'bold';
+let _usePoppins = false;
+
+function setFont(doc: jsPDF, style: FontStyle, size: number) {
+  const family = _usePoppins ? 'Poppins' : 'helvetica';
+  doc.setFont(family, style);
+  doc.setFontSize(size);
 }
 
-function textC(doc: jsPDF, color: [number, number, number]) {
+function fill(doc: jsPDF, color: [number, number, number]) {
+  doc.setFillColor(color[0], color[1], color[2]);
+}
+
+function stroke(doc: jsPDF, color: [number, number, number], width = 0.3) {
+  doc.setDrawColor(color[0], color[1], color[2]);
+  doc.setLineWidth(width);
+}
+
+function textColor(doc: jsPDF, color: [number, number, number]) {
   doc.setTextColor(color[0], color[1], color[2]);
 }
 
+// ── Formatters ────────────────────────────────────────────────────────────────
+
 function fmtDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' });
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-ZA', {
+    day: '2-digit', month: 'long', year: 'numeric',
+  });
 }
 
 function fmtRand(v: number): string {
   if (v >= 1_000_000) return `R${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R${(v / 1_000).toFixed(0)}K`;
+  if (v >= 1_000)     return `R${(v / 1_000).toFixed(0)}K`;
   return `R${v.toLocaleString('en-ZA')}`;
 }
 
-function deltaArrow(curr: number, prev: number | null, lowerIsBetter: boolean): { arrow: string; color: [number, number, number] } {
-  if (prev === null) return { arrow: '', color: C.gray };
+function deltaArrow(
+  curr: number,
+  prev: number | null,
+  lowerIsBetter: boolean,
+): { arrow: string; color: [number, number, number]; delta: number } {
+  if (prev === null) return { arrow: '', color: C.gray, delta: 0 };
   const delta = curr - prev;
-  if (delta === 0) return { arrow: '→', color: C.gray };
+  if (delta === 0) return { arrow: '→', color: C.dimGray, delta: 0 };
   const improved = lowerIsBetter ? delta < 0 : delta > 0;
-  return improved
-    ? { arrow: delta < 0 ? '↓' : '↑', color: C.green }
-    : { arrow: delta < 0 ? '↓' : '↑', color: C.red };
+  return { arrow: delta < 0 ? '↓' : '↑', color: improved ? C.green : C.red, delta };
 }
 
-// ── Drawing helpers ───────────────────────────────────────────────────────────
-
-function drawFooter(doc: jsPDF, handler: string, pageNum: number, totalPages: number) {
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const y = pageH - 12;
-
-  // Gold rule
-  doc.setDrawColor(C.gold[0], C.gold[1], C.gold[2]);
-  doc.setLineWidth(0.5);
-  doc.line(14, y - 4, pageW - 14, y - 4);
-
-  doc.setFontSize(7);
-  textC(doc, C.gray);
-  doc.text('Santam Emerging Business — Claims Management', 14, y);
-  doc.text(`Generated ${fmtDate(new Date().toISOString().split('T')[0])} | Page ${pageNum} of ${totalPages}`, pageW / 2, y, { align: 'center' });
-  doc.text(`This report is confidential and intended for ${handler} only.`, pageW - 14, y, { align: 'right' });
-}
+// ── Page chrome ───────────────────────────────────────────────────────────────
 
 function drawHeader(doc: jsPDF, reportDate: string, compareFrom: string | null) {
-  const pageW = doc.internal.pageSize.getWidth();
+  const W = doc.internal.pageSize.getWidth();
 
-  // Navy header band
-  rgb(doc, C.navy);
-  doc.rect(0, 0, pageW, 22, 'F');
+  // Full-width navy band
+  fill(doc, C.navy);
+  doc.rect(0, 0, W, 20, 'F');
 
-  // Brand text left
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  textC(doc, C.gold);
-  doc.text('SANTAM EMERGING BUSINESS', 14, 8);
+  // Gold accent rule at bottom of header
+  stroke(doc, C.gold, 0.8);
+  doc.line(0, 20, W, 20);
 
-  doc.setFontSize(10);
-  textC(doc, C.white);
+  // Brand label
+  setFont(doc, 'bold', 6.5);
+  textColor(doc, C.gold);
+  doc.text('SANTAM EMERGING BUSINESS', 14, 7.5);
+
+  // Report title
+  setFont(doc, 'bold', 9.5);
+  textColor(doc, C.white);
   doc.text('Claims Performance Report', 14, 15);
 
-  // Date right
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  textC(doc, [200, 210, 230]);
-  const dateText = compareFrom
-    ? `${fmtDate(reportDate)} | Comparing: ${fmtDate(compareFrom)}`
+  // Date — right aligned
+  setFont(doc, 'normal', 7);
+  textColor(doc, [180, 195, 225]);
+  const dateLabel = compareFrom
+    ? `${fmtDate(reportDate)}  ·  vs ${fmtDate(compareFrom)}`
     : fmtDate(reportDate);
-  doc.text(dateText, pageW - 14, 12, { align: 'right' });
-
-  // Gold rule bottom of header
-  doc.setDrawColor(C.gold[0], C.gold[1], C.gold[2]);
-  doc.setLineWidth(0.8);
-  doc.line(0, 22, pageW, 22);
+  doc.text(dateLabel, W - 14, 12, { align: 'right' });
 }
+
+function drawFooter(doc: jsPDF, handler: string, page: number, total: number) {
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const y = H - 10;
+
+  stroke(doc, C.cardBorder, 0.4);
+  doc.line(14, y - 3, W - 14, y - 3);
+
+  setFont(doc, 'normal', 6.5);
+  textColor(doc, C.dimGray);
+  doc.text('Santam Emerging Business — Claims Management', 14, y);
+  doc.text(
+    `Generated ${fmtDate(new Date().toISOString().split('T')[0])}   ·   Page ${page} of ${total}`,
+    W / 2, y, { align: 'center' },
+  );
+  doc.text(
+    `Confidential — ${handler}`,
+    W - 14, y, { align: 'right' },
+  );
+}
+
+// ── Reusable drawing primitives ───────────────────────────────────────────────
+
+/** Thin-bordered card with optional left-accent strip */
+function drawCard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  opts: { accentColor?: [number, number, number]; bgColor?: [number, number, number] } = {},
+) {
+  const { accentColor, bgColor = C.white } = opts;
+  fill(doc, bgColor);
+  stroke(doc, C.cardBorder, 0.3);
+  doc.roundedRect(x, y, w, h, 1.5, 1.5, 'FD');
+  if (accentColor) {
+    fill(doc, accentColor);
+    doc.rect(x, y, 3, h, 'F');
+  }
+}
+
+/** Horizontal rule with label */
+function sectionTitle(doc: jsPDF, x: number, y: number, label: string) {
+  setFont(doc, 'bold', 7);
+  textColor(doc, C.navy);
+  doc.text(label, x, y);
+
+  const W = doc.internal.pageSize.getWidth();
+  stroke(doc, C.cardBorder, 0.3);
+  doc.line(x, y + 2, W - 14, y + 2);
+}
+
+/** Single metric card matching the modal's DeltaMetricCard */
+function drawMetricCard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  value: string,
+  prev: number | null,
+  curr: number,
+  lowerIsBetter: boolean,
+  isRand = false,
+) {
+  drawCard(doc, x, y, w, h);
+
+  // Label
+  setFont(doc, 'normal', 5.5);
+  textColor(doc, C.gray);
+  doc.text(label.toUpperCase(), x + 5, y + 7);
+
+  // Value
+  setFont(doc, 'bold', 15);
+  textColor(doc, C.navy);
+  doc.text(value, x + 5, y + 18, { maxWidth: w - 8 });
+
+  // Delta row
+  if (prev !== null) {
+    const { arrow, color, delta } = deltaArrow(curr, prev, lowerIsBetter);
+    const deltaStr = isRand ? fmtRand(Math.abs(delta)) : String(Math.abs(delta));
+    const prevStr  = isRand ? fmtRand(prev) : String(prev);
+    setFont(doc, 'normal', 6.5);
+    textColor(doc, color);
+    doc.text(`${arrow} ${deltaStr}`, x + 5, y + 25);
+    setFont(doc, 'normal', 6);
+    textColor(doc, C.dimGray);
+    doc.text(`vs ${prevStr}`, x + 5 + doc.getTextWidth(`${arrow} ${deltaStr}  `), y + 25);
+  }
+}
+
+// ── Doughnut helper ───────────────────────────────────────────────────────────
 
 function drawDoughnut(
   doc: jsPDF,
@@ -159,48 +257,36 @@ function drawDoughnut(
   cy: number,
   r: number,
   innerR: number,
-  segments: Array<{ value: number; color: [number, number, number]; label: string }>,
+  segments: Array<{ value: number; color: [number, number, number] }>,
 ) {
   const total = segments.reduce((s, seg) => s + seg.value, 0);
   if (total === 0) return;
-
   let startAngle = -Math.PI / 2;
-  const step = 0.02;
+  const step = 0.025;
 
   for (const seg of segments) {
     if (seg.value === 0) continue;
     const angle = (seg.value / total) * 2 * Math.PI;
     const endAngle = startAngle + angle;
-
-    // Draw filled arc as polygon approximation
     const pts: Array<[number, number]> = [];
-    for (let a = startAngle; a <= endAngle; a += step) {
+    for (let a = startAngle; a <= endAngle; a += step)
       pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
-    }
     pts.push([cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle)]);
-    // Inner arc reversed
-    for (let a = endAngle; a >= startAngle; a -= step) {
+    for (let a = endAngle; a >= startAngle; a -= step)
       pts.push([cx + innerR * Math.cos(a), cy + innerR * Math.sin(a)]);
-    }
-
-    doc.setFillColor(seg.color[0], seg.color[1], seg.color[2]);
-    doc.setDrawColor(255, 255, 255);
-    doc.setLineWidth(0.3);
-
     if (pts.length < 2) continue;
-    // Build path
+    fill(doc, seg.color);
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.4);
     doc.lines(
       pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]] as [number, number]),
-      pts[0][0],
-      pts[0][1],
-      [1, 1],
-      'FD',
-      true,
+      pts[0][0], pts[0][1], [1, 1], 'FD', true,
     );
-
     startAngle = endAngle;
   }
 }
+
+// ── Bar chart helper ──────────────────────────────────────────────────────────
 
 function drawBarChart(
   doc: jsPDF,
@@ -208,388 +294,374 @@ function drawBarChart(
   y: number,
   w: number,
   h: number,
-  groups: Array<{ label: string; bars: Array<{ value: number; color: [number, number, number]; label: string }> }>,
+  groups: Array<{ label: string; value: number; color: [number, number, number] }>,
 ) {
-  const maxVal = Math.max(...groups.flatMap(g => g.bars.map(b => b.value)), 1);
+  const maxVal = Math.max(...groups.map(g => g.value), 1);
   const groupW = w / groups.length;
-  const barW = (groupW - 8) / (groups[0]?.bars.length ?? 1);
+  const barW = groupW * 0.45;
+  const barGap = (groupW - barW) / 2;
 
-  // Draw axes
-  doc.setDrawColor(C.lightGray[0], C.lightGray[1], C.lightGray[2]);
-  doc.setLineWidth(0.3);
-  doc.line(x, y, x, y + h);
-  doc.line(x, y + h, x + w, y + h);
-
-  // Y-axis labels
-  doc.setFontSize(6);
-  textC(doc, C.gray);
+  // Grid lines
+  stroke(doc, C.cardBorder, 0.25);
   for (let i = 0; i <= 4; i++) {
-    const val = Math.round((maxVal * i) / 4);
-    const yPos = y + h - (i / 4) * h;
-    doc.text(String(val), x - 2, yPos + 1, { align: 'right' });
-    doc.setDrawColor(C.lightGray[0], C.lightGray[1], C.lightGray[2]);
-    doc.line(x, yPos, x + w, yPos);
+    const gy = y + h - (i / 4) * h;
+    doc.line(x, gy, x + w, gy);
   }
 
-  groups.forEach((group, gi) => {
-    const gx = x + gi * groupW + 4;
-    group.bars.forEach((bar, bi) => {
-      const bx = gx + bi * (barW + 1);
-      const barH = (bar.value / maxVal) * h;
-      const by = y + h - barH;
-      doc.setFillColor(bar.color[0], bar.color[1], bar.color[2]);
-      doc.rect(bx, by, barW, barH, 'F');
-    });
-    // Group label
-    doc.setFontSize(6);
-    textC(doc, C.gray);
-    doc.text(group.label, gx + (groupW - 8) / 2, y + h + 5, { align: 'center', maxWidth: groupW });
+  // Y-axis values
+  setFont(doc, 'normal', 5.5);
+  textColor(doc, C.dimGray);
+  for (let i = 0; i <= 4; i++) {
+    const val = Math.round((maxVal * i) / 4);
+    const gy = y + h - (i / 4) * h;
+    doc.text(String(val), x - 2, gy + 1, { align: 'right' });
+  }
+
+  groups.forEach((g, i) => {
+    const bx = x + i * groupW + barGap;
+    const barH = maxVal > 0 ? (g.value / maxVal) * h : 0;
+    const by = y + h - barH;
+
+    // Bar with rounded top
+    fill(doc, g.color);
+    doc.setDrawColor(g.color[0], g.color[1], g.color[2]);
+    doc.setLineWidth(0);
+    if (barH > 0) doc.roundedRect(bx, by, barW, barH, 1, 1, 'F');
+
+    // Value above bar
+    if (g.value > 0) {
+      setFont(doc, 'bold', 7);
+      textColor(doc, g.color);
+      doc.text(String(g.value), bx + barW / 2, by - 2, { align: 'center' });
+    }
+
+    // Label below
+    setFont(doc, 'normal', 6.5);
+    textColor(doc, C.gray);
+    doc.text(g.label, bx + barW / 2, y + h + 5.5, { align: 'center' });
   });
 }
 
-// ── Page 1 ────────────────────────────────────────────────────────────────────
+// ── Page 1: Summary + Metrics ─────────────────────────────────────────────────
 
 function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
-  const pageW = doc.internal.pageSize.getWidth();
-  let y = 28;
+  const W = doc.internal.pageSize.getWidth();
+  let y = 26;
 
   // Greeting
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  textC(doc, C.navy);
+  setFont(doc, 'bold', 17);
+  textColor(doc, C.navy);
   doc.text(`Good morning, ${d.firstName}.`, 14, y);
-  y += 8;
+  y += 7;
 
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  textC(doc, C.gray);
+  setFont(doc, 'normal', 8.5);
+  textColor(doc, C.gray);
   const subtitle = d.compareFrom
-    ? `Here is your performance snapshot for ${fmtDate(d.compareTo)}. This report compares your portfolio against ${fmtDate(d.compareFrom)}.`
-    : `Here is your performance snapshot for ${fmtDate(d.compareTo)}.`;
-  const subtitleLines = doc.splitTextToSize(subtitle, pageW - 28);
-  doc.text(subtitleLines, 14, y);
-  y += subtitleLines.length * 5 + 6;
+    ? `Performance snapshot for ${fmtDate(d.compareTo)}, compared against ${fmtDate(d.compareFrom)}.`
+    : `Performance snapshot for ${fmtDate(d.compareTo)}.`;
+  doc.text(doc.splitTextToSize(subtitle, W - 28), 14, y);
+  y += 9;
 
-  // ── Wins section ─────────────────────────────────────────────────────────────
-  // Section label
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'bold');
-  textC(doc, C.gold);
-  doc.text('✓  WHAT YOU MOVED', 17, y);
-  // Green left border bar
-  doc.setFillColor(C.green[0], C.green[1], C.green[2]);
-  doc.rect(14, y - 5, 2, 4, 'F');
-  y += 3;
+  // ── Highlights ──────────────────────────────────────────────────────────────
+  sectionTitle(doc, 14, y, 'HIGHLIGHTS');
+  y += 6;
 
-  // Green box
-  const winsBoxH = d.resolvedClaims.length > 0 ? 30 + d.resolvedClaims.slice(0, 5).length * 5 : 20;
-  doc.setFillColor(C.lightGreen[0], C.lightGreen[1], C.lightGreen[2]);
-  doc.setDrawColor(C.green[0], C.green[1], C.green[2]);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(14, y, pageW - 28, winsBoxH, 2, 2, 'FD');
-  // Left border accent
-  doc.setFillColor(C.green[0], C.green[1], C.green[2]);
-  doc.rect(14, y, 3, winsBoxH, 'F');
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  textC(doc, C.darkGreen);
   const winsLines: string[] = [];
-  if (d.wins.finalisedCount > 0) winsLines.push(`You finalised ${d.wins.finalisedCount} claim${d.wins.finalisedCount !== 1 ? 's' : ''} this period.`);
-  if (d.wins.movedOutOfCritical > 0) winsLines.push(`You moved ${d.wins.movedOutOfCritical} claim${d.wins.movedOutOfCritical !== 1 ? 's' : ''} out of critical status.`);
-  if (d.wins.improvedCount > 0) winsLines.push(`${d.wins.improvedCount} claim${d.wins.improvedCount !== 1 ? 's' : ''} improved priority level.`);
-  if (winsLines.length === 0) winsLines.push('No finalisations this period — focus on the priority list below.');
-  doc.text(winsLines.join('  ·  '), 20, y + 7, { maxWidth: pageW - 36 });
+  if (d.wins.finalisedCount > 0)
+    winsLines.push(`Finalised ${d.wins.finalisedCount} claim${d.wins.finalisedCount !== 1 ? 's' : ''} this period.`);
+  if (d.wins.movedOutOfCritical > 0)
+    winsLines.push(`Moved ${d.wins.movedOutOfCritical} claim${d.wins.movedOutOfCritical !== 1 ? 's' : ''} out of critical.`);
+  if (d.wins.improvedCount > 0)
+    winsLines.push(`${d.wins.improvedCount} claim${d.wins.improvedCount !== 1 ? 's' : ''} improved priority.`);
+  if (winsLines.length === 0)
+    winsLines.push('No finalisations this period — work the priority list on page 3.');
 
-  if (d.resolvedClaims.length > 0) {
-    const tableY = y + 13;
+  const hasTable = d.resolvedClaims.length > 0;
+  const winsH = hasTable ? 14 + d.resolvedClaims.slice(0, 5).length * 6 + 8 : 14;
+
+  drawCard(doc, 14, y, W - 28, winsH, { accentColor: C.green, bgColor: C.lightGreen });
+
+  setFont(doc, 'normal', 8);
+  textColor(doc, C.darkGreen);
+  doc.text(winsLines.join('   ·   '), 20, y + 7, { maxWidth: W - 36 });
+
+  if (hasTable) {
     autoTable(doc, {
-      startY: tableY,
+      startY: y + 11,
       margin: { left: 20, right: 14 },
-      head: [['Claim ID', 'Was', 'Now', 'Outstanding']],
+      head: [['Claim ID', 'Previous Status', 'Current Status', 'Outstanding']],
       body: d.resolvedClaims.slice(0, 5).map(c => [
         (c.currentStatus === null ? '✓ ' : '') + c.claimId,
         c.previousStatus,
         c.currentStatus ?? 'Resolved',
         fmtRand(c.outstanding),
       ]),
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: C.green, textColor: C.white, fontStyle: 'bold', fontSize: 7 },
-      alternateRowStyles: { fillColor: [240, 255, 244] },
+      styles: { fontSize: 7, cellPadding: [2, 3], font: _usePoppins ? 'Poppins' : 'helvetica' },
+      headStyles: { fillColor: C.green, textColor: C.white, fontStyle: 'bold', fontSize: 6.5, cellPadding: [2, 3] },
+      alternateRowStyles: { fillColor: [220, 252, 231] },
       theme: 'plain',
     });
   }
 
-  y += winsBoxH + 6;
+  y += winsH + 8;
 
-  // ── Six delta metric cards ────────────────────────────────────────────────────
-  const metricsData = [
-    { label: 'Critical Claims', curr: d.metrics.criticalCurrent, prev: d.metrics.criticalPrevious, lowerBetter: true },
-    { label: 'Urgent Claims', curr: d.metrics.urgentCurrent, prev: d.metrics.urgentPrevious, lowerBetter: true },
-    { label: 'Standard Claims', curr: d.metrics.standardCurrent, prev: d.metrics.standardPrevious, lowerBetter: false },
-    { label: 'TAT Breaches', curr: d.metrics.tatBreachesCurrent, prev: d.metrics.tatBreachesPrevious, lowerBetter: true },
-    { label: 'Total Outstanding', curr: d.metrics.totalOsCurrent, prev: d.metrics.totalOsPrevious, lowerBetter: true },
-    { label: 'Claims Finalised', curr: d.metrics.finalisedCurrent, prev: d.metrics.finalisedPrevious, lowerBetter: false },
+  // ── Performance metrics grid (3 × 2) ─────────────────────────────────────────
+  sectionTitle(doc, 14, y, 'PERFORMANCE METRICS');
+  y += 7;
+
+  const metrics = [
+    { label: 'Critical Claims',    curr: d.metrics.criticalCurrent,    prev: d.metrics.criticalPrevious,    lower: true,  rand: false },
+    { label: 'Urgent Claims',      curr: d.metrics.urgentCurrent,      prev: d.metrics.urgentPrevious,      lower: true,  rand: false },
+    { label: 'Standard Claims',    curr: d.metrics.standardCurrent,    prev: d.metrics.standardPrevious,    lower: false, rand: false },
+    { label: 'TAT Breaches',       curr: d.metrics.tatBreachesCurrent, prev: d.metrics.tatBreachesPrevious, lower: true,  rand: false },
+    { label: 'Total Outstanding',  curr: d.metrics.totalOsCurrent,     prev: d.metrics.totalOsPrevious,     lower: true,  rand: true  },
+    { label: 'Claims Finalised',   curr: d.metrics.finalisedCurrent,   prev: d.metrics.finalisedPrevious,   lower: false, rand: false },
   ];
 
-  const cardW = (pageW - 28 - 10) / 3;
-  const cardH = 26;
-  const colGap = 5;
+  const cardW = (W - 28 - 8) / 3;
+  const cardH = 30;
+  const colGap = 4;
 
-  metricsData.forEach((m, idx) => {
-    const col = idx % 3;
-    const row = Math.floor(idx / 3);
+  metrics.forEach((m, i) => {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
     const cx = 14 + col * (cardW + colGap);
     const cy = y + row * (cardH + 4);
-
-    // Card border
-    doc.setFillColor(248, 250, 255);
-    doc.setDrawColor(C.blue[0], C.blue[1], C.blue[2]);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(cx, cy, cardW, cardH, 2, 2, 'FD');
-
-    // Label
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
-    textC(doc, C.gray);
-    doc.text(m.label.toUpperCase(), cx + 4, cy + 7);
-
-    // Current value
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    textC(doc, C.navy);
-    const valStr = m.label === 'Total Outstanding' ? fmtRand(m.curr) : String(m.curr);
-    doc.text(valStr, cx + 4, cy + 18);
-
-    // Delta row
-    if (m.prev !== null) {
-      const { arrow, color } = deltaArrow(m.curr, m.prev, m.lowerBetter);
-      const delta = Math.abs(m.curr - m.prev);
-      const deltaStr = m.label === 'Total Outstanding' ? fmtRand(delta) : String(delta);
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
-      textC(doc, color);
-      const prevStr = m.label === 'Total Outstanding' ? fmtRand(m.prev) : String(m.prev);
-      doc.text(`${arrow} ${deltaStr}  vs ${prevStr}`, cx + 4, cy + 23);
-    }
+    const valStr = m.rand ? fmtRand(m.curr) : String(m.curr);
+    drawMetricCard(doc, cx, cy, cardW, cardH, m.label, valStr, m.prev, m.curr, m.lower, m.rand);
   });
 }
 
-// ── Page 2 ────────────────────────────────────────────────────────────────────
+// ── Page 2: Portfolio + Stuck Claims ──────────────────────────────────────────
 
 function buildPage2(doc: jsPDF, d: HandlerPerformancePDFData) {
-  const pageW = doc.internal.pageSize.getWidth();
-  let y = 28;
+  const W = doc.internal.pageSize.getWidth();
+  let y = 26;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  textC(doc, C.navy);
-  doc.text('YOUR PORTFOLIO AT A GLANCE', 14, y);
+  sectionTitle(doc, 14, y, 'PORTFOLIO OVERVIEW');
   y += 8;
 
-  // Doughnut chart (left half)
-  const cx = 55;
-  const cy = y + 38;
-  const r = 30;
-  const innerR = 18;
+  // ── Doughnut ─────────────────────────────────────────────────────────────────
+  const cx = 46;
+  const cy = y + 28;
+  const r  = 24;
+  const innerR = 14;
 
   const segments = [
-    { value: d.portfolio.critical, color: C.red, label: 'Critical' },
-    { value: d.portfolio.urgent, color: C.amber, label: 'Urgent' },
-    { value: d.portfolio.standard, color: C.blue, label: 'Standard' },
-    { value: d.portfolio.finalised, color: C.green, label: 'Finalised' },
+    { value: d.portfolio.critical, color: C.red,   label: 'Critical' },
+    { value: d.portfolio.urgent,   color: C.amber,  label: 'Urgent'   },
+    { value: d.portfolio.standard, color: C.blue,   label: 'Standard' },
+    { value: d.portfolio.finalised,color: C.green,  label: 'Finalised'},
   ].filter(s => s.value > 0);
 
   drawDoughnut(doc, cx, cy, r, innerR, segments);
 
   // Centre text
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  textC(doc, C.navy);
-  doc.text(String(d.portfolio.totalOpen), cx, cy - 1, { align: 'center' });
-  doc.setFontSize(6);
-  textC(doc, C.gray);
-  doc.text('open', cx, cy + 4, { align: 'center' });
+  setFont(doc, 'bold', 9);
+  textColor(doc, C.navy);
+  doc.text(String(d.portfolio.totalOpen), cx, cy + 1, { align: 'center' });
+  setFont(doc, 'normal', 6);
+  textColor(doc, C.gray);
+  doc.text('open', cx, cy + 5.5, { align: 'center' });
 
-  // Legend — horizontal row below the doughnut (stays within the left half)
-  const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
-  const legendRowY = cy + r + 8;
-  const legendItemW = 44;
-  const legendStartX = Math.max(14, cx - (segments.length * legendItemW) / 2);
-  doc.setFontSize(7);
+  // Legend — horizontal row below doughnut
+  const total = segments.reduce((s, g) => s + g.value, 0) || 1;
+  const legendY = cy + r + 8;
+  const itemW = (2 * r + 12) / Math.max(segments.length, 1);
+  const legendStartX = cx - r;
   segments.forEach((seg, i) => {
-    const lx = legendStartX + i * legendItemW;
-    doc.setFillColor(seg.color[0], seg.color[1], seg.color[2]);
-    doc.rect(lx, legendRowY - 3, 3, 3, 'F');
-    doc.setFont('helvetica', 'normal');
-    textC(doc, C.navy);
-    doc.text(`${seg.label}  ${seg.value}  (${((seg.value / total) * 100).toFixed(0)}%)`, lx + 5, legendRowY, { maxWidth: legendItemW - 6 });
+    const lx = legendStartX + i * itemW;
+    fill(doc, seg.color);
+    doc.rect(lx, legendY - 3, 3, 3, 'F');
+    setFont(doc, 'normal', 6);
+    textColor(doc, C.navy);
+    doc.text(
+      `${seg.label} ${seg.value} (${((seg.value / total) * 100).toFixed(0)}%)`,
+      lx + 4.5,
+      legendY,
+      { maxWidth: itemW - 5 },
+    );
   });
 
-  doc.setFontSize(7);
-  textC(doc, C.gray);
-  doc.text(`Portfolio — ${d.portfolio.totalOpen} open claims`, cx, legendRowY + 8, { align: 'center' });
+  setFont(doc, 'normal', 6);
+  textColor(doc, C.dimGray);
+  doc.text(`Portfolio breakdown — ${d.portfolio.totalOpen} open claims`, cx, legendY + 7, { align: 'center' });
 
-  // Bar chart — right half, safely separated from doughnut legend
-  const chartX = pageW / 2 + 8;
-  const chartY = y + 6;
-  const chartW = pageW / 2 - 24;
-  const chartH = 50;
+  // ── Bar chart (right half) ────────────────────────────────────────────────────
+  const chartX  = W / 2 + 8;
+  const chartY  = y + 4;
+  const chartW  = W / 2 - 22;
+  const chartH  = 48;
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  textC(doc, C.navy);
-  doc.text('Claims Movement', chartX + chartW / 2, chartY - 2, { align: 'center' });
+  setFont(doc, 'bold', 8);
+  textColor(doc, C.navy);
+  doc.text('Claims Movement', chartX + chartW / 2, chartY - 3, { align: 'center' });
 
   drawBarChart(doc, chartX, chartY, chartW, chartH, [
-    { label: 'Registered', bars: [{ value: d.registeredInPeriod, color: C.navy, label: 'New' }] },
-    { label: 'Finalised', bars: [{ value: d.finalisedInPeriod, color: C.green, label: 'Closed' }] },
+    { label: 'Registered', value: d.registeredInPeriod, color: C.navy },
+    { label: 'Finalised',  value: d.finalisedInPeriod,  color: C.green },
   ]);
 
-  // Advance y past whichever section is taller
-  const doughnutBottom = legendRowY + 14;
-  const chartBottom = chartY + chartH + 10;
-  y = Math.max(doughnutBottom, chartBottom) + 6;
+  const doughnutBottom = legendY + 13;
+  const chartBottom    = chartY + chartH + 12;
+  y = Math.max(doughnutBottom, chartBottom) + 4;
 
-  // Stuck claims callout
-  if (d.stuckClaims.length > 0) {
-    const boxY = y;
-    const boxH = 20 + Math.min(d.stuckClaims.length, 6) * 6 + 10;
-    doc.setFillColor(254, 242, 242);
-    doc.setDrawColor(C.red[0], C.red[1], C.red[2]);
-    doc.setLineWidth(1.2);
-    doc.rect(14, boxY, 4, boxH, 'F');
-    doc.setLineWidth(0.3);
-    doc.rect(14, boxY, pageW - 28, boxH, 'S');
+  // ── Stuck claims ──────────────────────────────────────────────────────────────
+  if (d.stuckClaims.length === 0) return;
 
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    textC(doc, C.red);
-    doc.text('⚠  Claims With No Movement', 22, boxY + 8);
+  sectionTitle(doc, 14, y, 'NO MOVEMENT DETECTED');
+  y += 6;
 
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    textC(doc, C.darkRed);
-    const fromStr = d.compareFrom ? fmtDate(d.compareFrom) : '—';
-    doc.text(
-      `${d.stuckClaims.length} claim${d.stuckClaims.length !== 1 ? 's' : ''} had no secondary status change between ${fromStr} and ${fmtDate(d.compareTo)}. These require your immediate attention.`,
-      22, boxY + 15, { maxWidth: pageW - 40 },
-    );
+  const fromStr = d.compareFrom ? fmtDate(d.compareFrom) : '—';
+  const calloutH = 12;
+  drawCard(doc, 14, y, W - 28, calloutH, { accentColor: C.red, bgColor: C.lightRed });
 
-    autoTable(doc, {
-      startY: boxY + 18,
-      margin: { left: 22, right: 14 },
-      head: [['Claim ID', 'Secondary Status', 'Days', 'Outstanding']],
-      body: d.stuckClaims.slice(0, 6).map(c => [c.claimId, c.secondaryStatus, c.daysInStatus, fmtRand(c.outstanding)]),
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: C.red, textColor: C.white, fontStyle: 'bold', fontSize: 7 },
-      alternateRowStyles: { fillColor: [254, 242, 242] },
-      theme: 'plain',
-    });
-  }
+  setFont(doc, 'normal', 7.5);
+  textColor(doc, C.darkRed);
+  doc.text(
+    `${d.stuckClaims.length} claim${d.stuckClaims.length !== 1 ? 's' : ''} had no secondary status change between ${fromStr} and ${fmtDate(d.compareTo)}. Requires immediate action.`,
+    20, y + 5, { maxWidth: W - 38 },
+  );
+  y += calloutH + 4;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: 14, right: 14 },
+    head: [['Claim ID', 'Secondary Status', 'Days in Status', 'Outstanding']],
+    body: d.stuckClaims.slice(0, 8).map(c => [
+      c.claimId, c.secondaryStatus, String(c.daysInStatus), fmtRand(c.outstanding),
+    ]),
+    styles: {
+      fontSize: 7, cellPadding: [2.5, 3],
+      font: _usePoppins ? 'Poppins' : 'helvetica',
+      textColor: C.navy,
+    },
+    headStyles: {
+      fillColor: C.lightGray, textColor: C.gray,
+      fontStyle: 'bold', fontSize: 6.5, cellPadding: [2.5, 3],
+    },
+    columnStyles: { 0: { fontStyle: 'bold', textColor: C.darkRed } },
+    alternateRowStyles: { fillColor: C.lightRed },
+    theme: 'plain',
+  });
 }
 
-// ── Page 3 ────────────────────────────────────────────────────────────────────
+// ── Page 3: Priority Action List ──────────────────────────────────────────────
 
 function buildPage3(doc: jsPDF, d: HandlerPerformancePDFData) {
-  const pageW = doc.internal.pageSize.getWidth();
-  let y = 28;
+  const W = doc.internal.pageSize.getWidth();
+  let y = 26;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  textC(doc, C.navy);
-  doc.text("TODAY'S PRIORITY LIST", 14, y);
-  y += 4;
-
-  const totalAction = d.criticalItems.length + d.urgentItems.length + d.standardItems.length;
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  textC(doc, C.gray);
-  doc.text(`${totalAction} claim${totalAction !== 1 ? 's' : ''} requiring action`, 14, y + 4);
-  y += 10;
+  const total = d.criticalItems.length + d.urgentItems.length + d.standardItems.length;
+  sectionTitle(doc, 14, y, `TODAY'S PRIORITY LIST — ${total} CLAIM${total !== 1 ? 'S' : ''} REQUIRING ACTION`);
+  y += 9;
 
   const sections = [
     {
       items: d.criticalItems,
-      color: C.red as [number, number, number],
-      label: `⚡ CRITICAL ACTION (${d.criticalItems.length})`,
-      rowBg: [254, 242, 242] as [number, number, number],
+      accent: C.red,
+      bgRow: C.lightRed,
+      label: `CRITICAL ACTION  (${d.criticalItems.length})`,
+      colText: C.darkRed,
     },
     {
       items: d.urgentItems,
-      color: C.gold as [number, number, number],
-      label: `⚠ URGENT (${d.urgentItems.length})`,
-      rowBg: [255, 251, 235] as [number, number, number],
+      accent: C.amber,
+      bgRow: C.lightAmber,
+      label: `URGENT  (${d.urgentItems.length})`,
+      colText: C.amber,
     },
     {
       items: d.standardItems,
-      color: C.blue as [number, number, number],
-      label: `✓ STANDARD (${d.standardItems.length})`,
-      rowBg: [239, 246, 255] as [number, number, number],
+      accent: C.blue,
+      bgRow: C.lightBlue,
+      label: `STANDARD  (${d.standardItems.length})`,
+      colText: C.blue,
     },
   ];
 
-  for (const section of sections) {
-    if (section.items.length === 0) continue;
+  for (const sec of sections) {
+    if (sec.items.length === 0) continue;
 
-    // Section header band
-    doc.setFillColor(section.color[0], section.color[1], section.color[2]);
-    doc.rect(14, y, pageW - 28, 7, 'F');
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    textC(doc, section.color === C.gold ? C.navy : C.white);
-    doc.text(section.label, 18, y + 5);
-    y += 7;
+    // Section header: accent strip + label
+    drawCard(doc, 14, y, W - 28, 8, { accentColor: sec.accent, bgColor: C.lightGray });
+    setFont(doc, 'bold', 7);
+    textColor(doc, sec.accent);
+    doc.text(sec.label, 20, y + 5.5);
+    y += 8;
 
     autoTable(doc, {
       startY: y,
       margin: { left: 14, right: 14 },
       head: [['Claim ID', 'Secondary Status', 'Days', 'Outstanding', 'TAT']],
-      body: section.items.map(item => [
+      body: sec.items.map(item => [
         item.claimId,
         item.secondaryStatus,
-        item.daysInStatus,
+        String(item.daysInStatus),
         fmtRand(item.outstanding),
         item.tatStatus === 'ON TRACK' ? '' : item.tatStatus,
       ]),
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: [244, 246, 250], textColor: C.gray, fontStyle: 'bold', fontSize: 7 },
-      alternateRowStyles: { fillColor: section.rowBg },
+      styles: {
+        fontSize: 7, cellPadding: [2.5, 3],
+        font: _usePoppins ? 'Poppins' : 'helvetica',
+        textColor: C.navy,
+      },
+      headStyles: {
+        fillColor: C.lightGray, textColor: C.gray,
+        fontStyle: 'bold', fontSize: 6.5, cellPadding: [2.5, 3],
+      },
       columnStyles: {
         0: { fontStyle: 'bold', textColor: C.navy },
-        4: { textColor: section.color === C.red ? C.darkRed : section.color, fontStyle: 'bold' },
+        4: { fontStyle: 'bold', textColor: sec.colText as [number, number, number] },
       },
+      alternateRowStyles: { fillColor: sec.bgRow },
       theme: 'plain',
       didDrawPage: () => {},
     });
 
-    const lastTable = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable;
-    y = (lastTable?.finalY ?? y) + 4;
+    const last = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable;
+    y = (last?.finalY ?? y) + 5;
   }
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Main export (async for font loading) ──────────────────────────────────────
 
-export function generateHandlerPerformancePdf(data: HandlerPerformancePDFData): Uint8Array {
+export async function generateHandlerPerformancePdf(
+  data: HandlerPerformancePDFData,
+): Promise<Uint8Array> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const totalPages = 3;
 
-  // Page 1
+  // Load Poppins — fall back to Helvetica if unavailable
+  const fonts = await loadPoppins();
+  if (fonts) {
+    try {
+      doc.addFileToVFS('Poppins-Regular.ttf', fonts.regular);
+      doc.addFont('Poppins-Regular.ttf', 'Poppins', 'normal');
+      doc.addFileToVFS('Poppins-Bold.ttf', fonts.bold);
+      doc.addFont('Poppins-Bold.ttf', 'Poppins', 'bold');
+      _usePoppins = true;
+    } catch {
+      _usePoppins = false;
+    }
+  } else {
+    _usePoppins = false;
+  }
+
+  const TOTAL = 3;
+
   drawHeader(doc, data.reportDate, data.compareFrom);
   buildPage1(doc, data);
-  drawFooter(doc, data.handler, 1, totalPages);
+  drawFooter(doc, data.handler, 1, TOTAL);
 
-  // Page 2
   doc.addPage();
   drawHeader(doc, data.reportDate, data.compareFrom);
   buildPage2(doc, data);
-  drawFooter(doc, data.handler, 2, totalPages);
+  drawFooter(doc, data.handler, 2, TOTAL);
 
-  // Page 3
   doc.addPage();
   drawHeader(doc, data.reportDate, data.compareFrom);
   buildPage3(doc, data);
-  drawFooter(doc, data.handler, 3, totalPages);
+  drawFooter(doc, data.handler, 3, TOTAL);
 
   return doc.output('arraybuffer') as unknown as Uint8Array;
 }

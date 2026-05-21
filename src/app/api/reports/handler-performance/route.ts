@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     if (!handler) return NextResponse.json({ error: 'handler required' }, { status: 400 });
 
     const data = await fetchHandlerPerformanceData(handler, toDate, fromDate);
-    const pdfBytes = generateHandlerPerformancePdf(data);
+    const pdfBytes = await generateHandlerPerformancePdf(data);
 
     const safeHandler = handler.replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_');
     const dateStr = toDate ?? new Date().toISOString().split('T')[0];
