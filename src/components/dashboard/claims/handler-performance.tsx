@@ -12,6 +12,8 @@ import {
 } from 'recharts';
 import type { UserRole } from '@/types/roles';
 import type { FilterState } from '@/components/dashboard/types';
+import { useComparison } from '@/contexts/ComparisonContext';
+import { HandlerDetailModal } from '@/components/dashboard/management-overview/handler-detail-modal';
 
 interface HandlerPerformanceData {
   scorecards: Array<{
@@ -83,12 +85,14 @@ function ScorecardChip({ children, variant }: { children: React.ReactNode; varia
 
 type Scorecard = HandlerPerformanceData['scorecards'][number];
 
-function HandlerCard({ card }: { card: Scorecard }) {
+function HandlerCard({ card, onClick }: { card: Scorecard; onClick: () => void }) {
   const glassAbove = card.finalisationGlass !== null && card.finalisationGlass >= GLASS_TARGET;
   const complexAbove = card.finalisationComplex !== null && card.finalisationComplex >= COMPLEX_TARGET;
 
   return (
-    <div className="bg-white rounded-xl border border-[#E8EEF8] shadow-sm p-4 flex flex-col gap-3">
+    <button
+      onClick={onClick}
+      className="bg-white rounded-xl border border-[#E8EEF8] shadow-sm p-4 flex flex-col gap-3 text-left w-full hover:border-[#1E5BC6] hover:shadow-md transition-all cursor-pointer">
       {/* Header */}
       <div>
         <p className="font-semibold text-[#0D2761] text-sm">{card.handler}</p>
@@ -141,7 +145,7 @@ function HandlerCard({ card }: { card: Scorecard }) {
         )}
         <ScorecardChip variant="gray">Open: {card.openCount} claims</ScorecardChip>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -150,6 +154,8 @@ const EMPTY = 'No data yet — import a Claims Outstanding report to populate th
 export function HandlerPerformance({ role, userId: _userId, filters }: SubViewProps) {
   const [data, setData] = useState<HandlerPerformanceData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedHandler, setSelectedHandler] = useState<string | null>(null);
+  const { isComparing, resolvedFromDate, resolvedToDate } = useComparison();
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -197,9 +203,18 @@ export function HandlerPerformance({ role, userId: _userId, filters }: SubViewPr
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {visibleCards.map(card => (
-            <HandlerCard key={card.handler} card={card} />
+            <HandlerCard key={card.handler} card={card} onClick={() => setSelectedHandler(card.handler)} />
           ))}
         </div>
+      )}
+
+      {selectedHandler && (
+        <HandlerDetailModal
+          handler={selectedHandler}
+          fromDate={isComparing && resolvedFromDate ? resolvedFromDate : undefined}
+          isComparing={isComparing && !!(resolvedFromDate && resolvedToDate)}
+          onClose={() => setSelectedHandler(null)}
+        />
       )}
 
       {/* Workload balance chart */}
