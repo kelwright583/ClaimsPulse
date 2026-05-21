@@ -1,11 +1,15 @@
 import { requireAuth } from '@/lib/supabase/auth-helpers';
 import { prisma } from '@/lib/prisma';
+import type { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireAuth();
+
+    const { searchParams } = new URL(request.url);
+    const compareFrom = searchParams.get('compareFrom');
 
     // Get latest completed import run for CLAIMS_OUTSTANDING
     const latestImport = await prisma.importRun.findFirst({
@@ -119,6 +123,40 @@ export async function GET() {
       ? Number(incurredData._avg.totalIncurred)
       : null;
 
+    // Comparison data
+    let comparison: {
+      outstandingClaims: number;
+      claimsOpenedToday: number;
+      claimsClosedToday: number;
+      tatBreachRate: number | null;
+      averageIncurred: number | null;
+      largeClaimsCount: number;
+    } | null = null;
+
+    if (compareFrom) {
+      const fromDate = new Date(compareFrom);
+      const [cOutstanding, cTatData, cIncurredData, cLarge, cOpened, cClosed] = await Promise.all([
+        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, claimStatus: { not: 'Finalized' } } }),
+        prisma.claimSnapshot.aggregate({ where: { snapshotDate: fromDate, claimStatus: { not: 'Finalized' } }, _count: { id: true } })
+          .then(async total => {
+            const breached = await prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, claimStatus: { not: 'Finalized' }, isTatBreach: true } });
+            return { total: total._count.id, breached };
+          }),
+        prisma.claimSnapshot.aggregate({ where: { snapshotDate: fromDate, claimStatus: { not: 'Finalized' }, totalIncurred: { not: null } }, _avg: { totalIncurred: true } }),
+        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, totalIncurred: { gt: 250000 } } }),
+        prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) as count FROM claim_snapshots WHERE snapshot_date = ${fromDate}::date AND delta_flags::jsonb ? 'new_claim'`.then(r => Number(r[0]?.count ?? 0)),
+        prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) as count FROM claim_snapshots WHERE snapshot_date = ${fromDate}::date AND delta_flags::jsonb ? 'finalised'`.then(r => Number(r[0]?.count ?? 0)),
+      ]);
+      comparison = {
+        outstandingClaims: cOutstanding,
+        claimsOpenedToday: cOpened,
+        claimsClosedToday: cClosed,
+        tatBreachRate: cTatData.total > 0 ? (cTatData.breached / cTatData.total) * 100 : null,
+        averageIncurred: cIncurredData._avg.totalIncurred ? Number(cIncurredData._avg.totalIncurred) : null,
+        largeClaimsCount: cLarge,
+      };
+    }
+
     return Response.json({
       outstandingClaims,
       claimsOpenedToday,
@@ -127,6 +165,7 @@ export async function GET() {
       averageIncurred,
       largeClaimsCount,
       asOf: snapshotDate.toISOString(),
+      comparison,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal error';

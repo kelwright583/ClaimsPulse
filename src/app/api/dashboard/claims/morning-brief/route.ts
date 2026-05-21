@@ -13,11 +13,15 @@ async function getLatestSnapshotDate(): Promise<Date | null> {
   return result?.snapshotDate ?? null;
 }
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   const ctx = await getSessionContext();
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!(ALLOWED_ROLES as readonly string[]).includes(ctx.role))
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { searchParams } = new URL(request.url);
+  const compareFrom = searchParams.get('compareFrom');
+  const compareTo = searchParams.get('compareTo');
 
   try {
     const latestDate = await getLatestSnapshotDate();
@@ -133,6 +137,40 @@ export async function GET(_request: NextRequest) {
       lastActivity: r.last_activity ? r.last_activity.toISOString() : null,
     }));
 
+    // Comparison data
+    let comparison: {
+      alertCards: { tatBreaches: number; redFlags: number; bigClaimsOpen: number; unassignedWithPayment: number };
+      attention: { readyToClose: number; newlyBreached: number; valueJumps: number; stagnant: number };
+    } | null = null;
+
+    if (compareFrom) {
+      const fromDate = new Date(compareFrom);
+      const [cTatBreaches, cBigClaimsOpen, cRedFlags, cUnassigned, cReadyToClose] = await Promise.all([
+        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, isTatBreach: true, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } } }),
+        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] }, totalIncurred: { gt: 250000 } } }),
+        prisma.claimFlag.count({ where: { detail: { path: ['actioned'], equals: false } } }),
+        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, handler: null, totalPaid: { gt: 0 } } }),
+        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] }, OR: [{ totalOs: null }, { totalOs: 0 }] } }),
+      ]);
+
+      const cDeltaSnaps = await prisma.claimSnapshot.findMany({
+        where: { snapshotDate: fromDate, deltaFlags: { not: undefined } },
+        select: { deltaFlags: true, isTatBreach: true },
+      });
+      let cValueJumps = 0, cStagnant = 0;
+      for (const s of cDeltaSnaps) {
+        const flags = s.deltaFlags as Record<string, unknown> | null;
+        if (!flags) continue;
+        if (flags['value_jump_20pct']) cValueJumps++;
+        if (s.isTatBreach && !flags['secondary_status_change']) cStagnant++;
+      }
+
+      comparison = {
+        alertCards: { tatBreaches: cTatBreaches, redFlags: cRedFlags, bigClaimsOpen: cBigClaimsOpen, unassignedWithPayment: cUnassigned },
+        attention: { readyToClose: cReadyToClose, newlyBreached: 0, valueJumps: cValueJumps, stagnant: cStagnant },
+      };
+    }
+
     return NextResponse.json({
       alertCards: { tatBreaches, redFlags, bigClaimsOpen, unassignedWithPayment },
       attention: {
@@ -143,6 +181,7 @@ export async function GET(_request: NextRequest) {
         stagnant,
       },
       handlerHealth,
+      comparison,
     });
   } catch (e) {
     console.error(e);

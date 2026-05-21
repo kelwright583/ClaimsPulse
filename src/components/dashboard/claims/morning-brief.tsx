@@ -6,14 +6,18 @@ import type { UserRole } from '@/types/roles';
 import type { FilterState } from '@/components/dashboard/types';
 import { DrillDownModal } from '@/components/drill-down/DrillDownModal';
 import type { DrillDownContext } from '@/components/drill-down/types';
+import { CompareBar } from '@/components/ui/compare-bar';
+import { useComparison } from '@/contexts/ComparisonContext';
+
+interface AlertCardsShape {
+  tatBreaches: number;
+  redFlags: number;
+  bigClaimsOpen: number;
+  unassignedWithPayment: number;
+}
 
 interface MorningBriefData {
-  alertCards: {
-    tatBreaches: number;
-    redFlags: number;
-    bigClaimsOpen: number;
-    unassignedWithPayment: number;
-  };
+  alertCards: AlertCardsShape;
   attention: {
     uploadDate: string | null;
     readyToClose: number;
@@ -27,6 +31,10 @@ interface MorningBriefData {
     breachCount: number;
     lastActivity: string | null;
   }>;
+  comparison: {
+    alertCards: AlertCardsShape;
+    attention: { readyToClose: number; newlyBreached: number; valueJumps: number; stagnant: number };
+  } | null;
 }
 
 interface SubViewProps {
@@ -52,18 +60,44 @@ function useCountUp(target: number, duration = 800) {
   return count;
 }
 
+function DeltaRow({ current, previous, lowerIsBetter, isComparing }: {
+  current: number;
+  previous: number | null;
+  lowerIsBetter: boolean;
+  isComparing: boolean;
+}) {
+  if (!isComparing) return null;
+  if (previous === null) return <p className="text-xs text-[#9CA3AF] mt-1">— select dates to compare</p>;
+  const delta = current - previous;
+  const improved = lowerIsBetter ? delta < 0 : delta > 0;
+  const unchanged = delta === 0;
+  const color = unchanged ? '#6B7280' : improved ? '#16A34A' : '#DC2626';
+  const arrow = unchanged ? '→' : delta < 0 ? '↓' : '↑';
+  return (
+    <p className="text-xs mt-1 tabular-nums" style={{ color }}>
+      {arrow} {Math.abs(delta)} <span className="text-[#9CA3AF]">vs {previous}</span>
+    </p>
+  );
+}
+
 function AlertCard({
   label,
   value,
   icon: Icon,
   isRed,
   onClick,
+  previousValue,
+  lowerIsBetter,
+  isComparing,
 }: {
   label: string;
   value: number;
   icon: React.ElementType;
   isRed?: boolean;
   onClick?: () => void;
+  previousValue?: number | null;
+  lowerIsBetter?: boolean;
+  isComparing?: boolean;
 }) {
   const count = useCountUp(value);
   return (
@@ -92,6 +126,12 @@ function AlertCard({
           {count}
         </p>
         <p className="text-xs text-[#6B7280] mt-0.5">{label}</p>
+        <DeltaRow
+          current={value}
+          previous={previousValue ?? null}
+          lowerIsBetter={lowerIsBetter ?? true}
+          isComparing={isComparing ?? false}
+        />
       </div>
     </div>
   );
@@ -117,17 +157,22 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
   const [data, setData] = useState<MorningBriefData | null>(null);
   const [loading, setLoading] = useState(true);
   const [drillDown, setDrillDown] = useState<DrillDownContext | null>(null);
+  const { isComparing, resolvedFromDate, resolvedToDate } = useComparison();
 
   useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
-    fetch('/api/dashboard/claims/morning-brief', { signal: ctrl.signal })
+    const params = new URLSearchParams();
+    if (isComparing && resolvedFromDate) params.set('compareFrom', resolvedFromDate);
+    if (isComparing && resolvedToDate) params.set('compareTo', resolvedToDate);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    fetch(`/api/dashboard/claims/morning-brief${qs}`, { signal: ctrl.signal })
       .then(r => r.ok ? r.json() : null)
       .then((json: MorningBriefData | null) => { if (json) setData(json); })
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, []);
+  }, [isComparing, resolvedFromDate, resolvedToDate]);
 
   const today = new Date().toLocaleDateString('en-ZA', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -176,9 +221,14 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
       ]
     : [];
 
+  const cmp = data?.comparison ?? null;
+
   return (
     <>
       <div className="space-y-8">
+        {/* Compare bar */}
+        <CompareBar />
+
         {/* Section 1 — Alert cards */}
         <section>
           <h2 className="text-base font-semibold text-[#0D2761] mb-4">
@@ -194,18 +244,27 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
                 icon={AlertTriangle}
                 isRed
                 onClick={() => setDrillDown({ type: 'sla_breaches', title: 'TAT Breaches' })}
+                previousValue={cmp?.alertCards.tatBreaches}
+                lowerIsBetter
+                isComparing={isComparing}
               />
               <AlertCard
                 label="Red flags"
                 value={alerts.redFlags}
                 icon={Flag}
                 onClick={() => setDrillDown({ type: 'red_flags', title: 'Red Flags' })}
+                previousValue={cmp?.alertCards.redFlags}
+                lowerIsBetter
+                isComparing={isComparing}
               />
               <AlertCard
                 label="Big claims open"
                 value={alerts.bigClaimsOpen}
                 icon={TrendingUp}
                 onClick={() => setDrillDown({ type: 'big_claims', title: 'Big Claims Open' })}
+                previousValue={cmp?.alertCards.bigClaimsOpen}
+                lowerIsBetter
+                isComparing={isComparing}
               />
               <AlertCard
                 label="Unassigned + payment"
@@ -213,6 +272,9 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
                 icon={CreditCard}
                 isRed
                 onClick={() => setDrillDown({ type: 'unassigned_payment', title: 'Unassigned Claims with Payment' })}
+                previousValue={cmp?.alertCards.unassignedWithPayment}
+                lowerIsBetter
+                isComparing={isComparing}
               />
             </div>
           )}

@@ -355,11 +355,13 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
   const allItems: ActionItem[] = snapshots.map(s => {
     const tatCfg = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;
     const delay = delayMap.get(s.claimId);
+    // Compute TAT breach from secondaryStatus vs TAT matrix
+    const computedTatBreach = tatCfg ? (s.daysInCurrentStatus ?? 0) > tatCfg.maxDays : false;
     let priority: Priority = 'standard';
-    if (s.isTatBreach && tatCfg?.priority === 'critical') priority = 'critical';
-    else if (s.isTatBreach || delay?.isOverdue) priority = 'urgent';
+    if (computedTatBreach && tatCfg?.priority === 'critical') priority = 'critical';
+    else if (computedTatBreach || delay?.isOverdue) priority = 'urgent';
     let tatPosition: TatPos = 'on-track';
-    if (s.isTatBreach) tatPosition = 'breach';
+    if (computedTatBreach) tatPosition = 'breach';
     else if (tatCfg && s.daysInCurrentStatus && s.daysInCurrentStatus > tatCfg.maxDays * 0.8) tatPosition = 'at-risk';
     return {
       claimId: s.claimId, claimStatus: s.claimStatus, secondaryStatus: s.secondaryStatus,
@@ -422,8 +424,9 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
 
   const portfolioClaims: PortfolioClaimRow[] = portClaims.filter(r => !isExportExcluded(r.secondaryStatus)).map(r => {
     const tatCfg = r.secondaryStatus ? slaMap.get(r.secondaryStatus) : null;
+    const computedBreach = tatCfg ? (r.daysInCurrentStatus ?? 0) > tatCfg.maxDays : false;
     let tatPos: TatPos = 'on-track';
-    if (r.isTatBreach) tatPos = 'breach';
+    if (computedBreach) tatPos = 'breach';
     else if (tatCfg && r.daysInCurrentStatus && r.daysInCurrentStatus > tatCfg.maxDays * 0.8) tatPos = 'at-risk';
     return {
       claimId: r.claimId, claimStatus: r.claimStatus, secondaryStatus: r.secondaryStatus,
@@ -551,13 +554,15 @@ async function fetchHandlerData(handler: string, snapshotDate: Date): Promise<Ha
 // ── Sheet builders ────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
-function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean, compareMap: CompareMap = null, compareDate: string | null = null): void {
   const ws = wb.addWorksheet("Today's Action Items");
-  const NC = isGroup ? 8 : 7;
+  const extraCols = compareMap ? 4 : 0;
+  const NC = (isGroup ? 8 : 7) + extraCols;
 
-  const widths = isGroup
+  const baseWidths = isGroup
     ? [22, 15, 28, 26, 17, 14, 12, 13]
     : [15, 28, 26, 17, 14, 12, 13];
+  const widths = compareMap ? [...baseWidths, 28, 10, 14, 12] : baseWidths;
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const sd = dataSet[0]?.snapshotDate;
@@ -572,9 +577,12 @@ function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup:
     NC, { bg: A.sectionBg, fontColor: A.gray, bold: false, size: 9, italic: true }, 14);
   addSpacer(ws, NC, 8);
 
-  const headers = isGroup
+  const baseHeaders = isGroup
     ? ['Handler', 'Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Last Actioned', 'Priority', 'TAT']
     : ['Claim ID', 'Secondary Status', 'Cause', 'Total Incurred', 'Last Actioned', 'Priority', 'TAT'];
+  const headers = compareMap
+    ? [...baseHeaders, 'Prev Secondary Status', 'Status Changed?', 'Days (prev)', 'Δ Days']
+    : baseHeaders;
 
   // ── Section writer ──
   function writeSection(
@@ -630,6 +638,20 @@ function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup:
           ];
 
       colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));
+
+      // Append comparison columns
+      if (compareMap) {
+        const cSnap = compareMap.get(item.claimId);
+        const baseCol = (isGroup ? 8 : 7) + 1;
+        const prevStatus = cSnap ? (cSnap.secondaryStatus ?? 'New claim') : 'New claim';
+        const changed = cSnap ? (cSnap.secondaryStatus !== item.secondaryStatus ? 'Yes' : 'No') : 'New claim';
+        const prevDays = cSnap ? (cSnap.daysInCurrentStatus ?? 0) : null;
+        const deltaDays = prevDays !== null ? (item.daysInStatus ?? 0) - prevDays : null;
+        sc(row.getCell(baseCol),     prevStatus,                         { bg, fontColor: A.gray,  border: borderArgb });
+        sc(row.getCell(baseCol + 1), changed,                            { bg: changed === 'Yes' ? A.lightGreen : bg, fontColor: changed === 'Yes' ? A.darkGreen : A.gray, h: 'center', border: borderArgb });
+        sc(row.getCell(baseCol + 2), prevDays ?? '—',                    { bg, fontColor: A.gray, h: 'center', border: borderArgb });
+        sc(row.getCell(baseCol + 3), deltaDays !== null ? deltaDays : '—', { bg: deltaDays !== null && deltaDays > 0 ? A.lightRed : deltaDays !== null && deltaDays < 0 ? A.lightGreen : bg, fontColor: A.darkGray, h: 'center', border: borderArgb });
+      }
     });
 
     addSpacer(ws, NC, 6);
@@ -667,6 +689,31 @@ function buildActionSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup:
     if (d.actionItems.length === 0) {
       addMergedRow(ws, '   All clear — no priority actions today.', NC,
         { bg: A.lightGreen, fontColor: A.darkGreen, bold: true, size: 10 }, 20);
+    }
+
+    // Ghost rows: claims in compareMap that are NOT in current portfolio (resolved)
+    if (compareMap && compareDate) {
+      const currentIds = new Set([
+        ...d.actionItems.map(c => c.claimId),
+        ...d.portfolioClaims.map(c => c.claimId),
+        ...d.pendingFinalisation.map(c => c.claimId),
+      ]);
+      const resolvedEntries = [...compareMap.entries()].filter(([id]) => !currentIds.has(id));
+      if (resolvedEntries.length > 0) {
+        addSpacer(ws, NC, 6);
+        addMergedRow(ws, `   ✓ Resolved since ${compareDate}  (${resolvedEntries.length})`, NC,
+          { bg: A.lightGreen, fontColor: A.darkGreen, bold: true, size: 10 }, 20);
+        resolvedEntries.forEach(([claimId, snap]) => {
+          const row = ws.addRow([]);
+          row.height = 18;
+          for (let c = 1; c <= NC; c++) {
+            row.getCell(c).fill = sf(A.lightGreen);
+          }
+          sc(row.getCell(1), claimId, { bg: A.lightGreen, fontColor: A.darkGreen, bold: true });
+          sc(row.getCell(2), snap.secondaryStatus ?? '—', { bg: A.lightGreen, fontColor: A.darkGreen });
+          sc(row.getCell(3), '✓ Resolved', { bg: A.lightGreen, fontColor: A.darkGreen, bold: true });
+        });
+      }
     }
   }
 }
@@ -751,12 +798,14 @@ function buildAssessorAppointedSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[
   }
 }
 
-function buildPortfolioSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean): void {
+function buildPortfolioSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGroup: boolean, compareMap: CompareMap = null, _compareDate: string | null = null): void {
   const ws = wb.addWorksheet('My Portfolio');
-  const NC = isGroup ? 9 : 8;
-  const widths = isGroup
+  const extraCols = compareMap ? 4 : 0;
+  const NC = (isGroup ? 9 : 8) + extraCols;
+  const baseWidths = isGroup
     ? [22, 15, 17, 28, 24, 7, 17, 17, 12]
     : [15, 17, 28, 24, 7, 17, 17, 12];
+  const widths = compareMap ? [...baseWidths, 17, 17, 12, 14] : baseWidths;
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const sd = dataSet[0]?.snapshotDate;
@@ -770,9 +819,12 @@ function buildPortfolioSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGro
     `   Generated: ${sd ? dateStr(sd) : '—'}  ·  Up to 150 claims per handler, ordered by outstanding amount`,
     NC, { bg: A.sectionBg, fontColor: A.gray, bold: false, size: 9, italic: true }, 14);
 
-  const headers = isGroup
+  const baseHeaders = isGroup
     ? ['Handler', 'Claim ID', 'Status', 'Secondary Status', 'Cause', 'Days', 'Total Incurred', 'Outstanding', 'TAT']
     : ['Claim ID', 'Status', 'Secondary Status', 'Cause', 'Days', 'Total Incurred', 'Outstanding', 'TAT'];
+  const headers = compareMap
+    ? [...baseHeaders, 'Prev Outstanding', 'Δ Outstanding', 'Prev TAT', 'Status Change']
+    : baseHeaders;
 
   for (const d of dataSet) {
     addSpacer(ws, NC, 10);
@@ -857,6 +909,29 @@ function buildPortfolioSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isGro
             ];
 
         colData.forEach(({ v, opts }, ci) => sc(row.getCell(ci + 1), v, opts));
+
+        // Portfolio comparison columns
+        if (compareMap) {
+          const cSnap = compareMap.get(claim.claimId);
+          const baseCol = (isGroup ? 9 : 8) + 1;
+          const prevOs = cSnap ? Number(cSnap.totalOs ?? 0) : null;
+          const currOs = claim.totalOs ? Number(claim.totalOs) : 0;
+          const deltaOs = prevOs !== null ? currOs - prevOs : null;
+          const prevTat = cSnap ? (cSnap.isTatBreach ? 'BREACH' : 'OK') : 'New';
+          // Determine status change direction
+          let statusChange = '—';
+          if (cSnap) {
+            const prevPriority = cSnap.isTatBreach ? 'breach' : 'ok';
+            const currPriority = claim.tatPosition === 'breach' ? 'breach' : 'ok';
+            if (prevPriority === 'breach' && currPriority !== 'breach') statusChange = 'Improved';
+            else if (prevPriority !== 'breach' && currPriority === 'breach') statusChange = 'Worsened';
+            else statusChange = 'Unchanged';
+          }
+          sc(row.getCell(baseCol),     prevOs !== null ? zarStr(prevOs) : 'New claim', { bg, fontColor: A.gray, h: 'right', border: A.border });
+          sc(row.getCell(baseCol + 1), deltaOs !== null ? (deltaOs > 0 ? `+${zarStr(deltaOs)}` : zarStr(deltaOs)) : '—', { bg: deltaOs !== null && deltaOs > 0 ? A.lightRed : deltaOs !== null && deltaOs < 0 ? A.lightGreen : bg, fontColor: A.darkGray, h: 'right', border: A.border });
+          sc(row.getCell(baseCol + 2), prevTat, { bg: prevTat === 'BREACH' ? A.lightRed : bg, fontColor: prevTat === 'BREACH' ? A.darkRed : A.gray, h: 'center', border: A.border });
+          sc(row.getCell(baseCol + 3), statusChange, { bg: statusChange === 'Improved' ? A.lightGreen : statusChange === 'Worsened' ? A.lightRed : bg, fontColor: statusChange === 'Improved' ? A.darkGreen : statusChange === 'Worsened' ? A.darkRed : A.gray, h: 'center', border: A.border });
+        }
       });
     }
 
@@ -1081,16 +1156,18 @@ function buildWeeklyDeltaSheet(wb: ExcelJS.Workbook, dataSet: HandlerData[], isG
   }
 }
 
-function buildWorkbook(dataSet: HandlerData[], isGroup: boolean): ExcelJS.Workbook {
+type CompareMap = Map<string, { secondaryStatus: string | null; daysInCurrentStatus: number | null; totalOs: unknown; isTatBreach: boolean }> | null;
+
+function buildWorkbook(dataSet: HandlerData[], isGroup: boolean, compareMap: CompareMap = null, compareDate: string | null = null): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'SEB Hub';
   wb.created = new Date();
   wb.modified = new Date();
 
   buildWeeklyDeltaSheet(wb, dataSet, isGroup);
-  buildActionSheet(wb, dataSet, isGroup);
+  buildActionSheet(wb, dataSet, isGroup, compareMap, compareDate);
   buildAssessorAppointedSheet(wb, dataSet, isGroup);
-  buildPortfolioSheet(wb, dataSet, isGroup);
+  buildPortfolioSheet(wb, dataSet, isGroup, compareMap, compareDate);
   buildPendingFinalisationSheet(wb, dataSet, isGroup);
 
   return wb;
@@ -1114,6 +1191,7 @@ export async function POST(request: NextRequest) {
       handler?: string;
       handlers?: string[];
       reportType: 'individual' | 'group';
+      compareDate?: string;
     };
 
     const { reportType } = body;
@@ -1141,7 +1219,29 @@ export async function POST(request: NextRequest) {
       handlerNames.map(h => fetchHandlerData(h, snapshotDate)),
     );
 
-    const wb = buildWorkbook(dataSet, reportType === 'group');
+    // Fetch comparison snapshots if compareDate provided
+    let compareMap: Map<string, { secondaryStatus: string | null; daysInCurrentStatus: number | null; totalOs: unknown; isTatBreach: boolean }> | null = null;
+    let compareSnapshotDate: string | null = null;
+    if (body.compareDate) {
+      compareSnapshotDate = body.compareDate;
+      const compareDate = new Date(body.compareDate);
+      const claimIds = dataSet.flatMap(d => [
+        ...d.actionItems.map(c => c.claimId),
+        ...d.portfolioClaims.map(c => c.claimId),
+        ...d.pendingFinalisation.map(c => c.claimId),
+      ]);
+      if (claimIds.length > 0) {
+        const compareSnaps = await prisma.claimSnapshot.findMany({
+          where: { snapshotDate: compareDate, claimId: { in: claimIds } },
+          select: { claimId: true, secondaryStatus: true, daysInCurrentStatus: true, totalOs: true, isTatBreach: true },
+        });
+        compareMap = new Map(compareSnaps.map(s => [s.claimId, s]));
+      } else {
+        compareMap = new Map();
+      }
+    }
+
+    const wb = buildWorkbook(dataSet, reportType === 'group', compareMap, compareSnapshotDate);
     const buffer = await wb.xlsx.writeBuffer();
 
     const today = new Date().toISOString().split('T')[0];

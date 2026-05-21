@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle, RefreshCw, AlertOctagon } from 'lucide-react';
 import type { UserRole } from '@/types/roles';
 import type { FilterState } from '@/components/dashboard/types';
+import { useComparison } from '@/contexts/ComparisonContext';
 
 interface MyWorkSubViewProps {
   role: UserRole;
@@ -28,6 +29,7 @@ interface ActionItem {
   lastActionedDate: string | null;
   statusChanged: boolean;
   previousSecondaryStatus: string | null;
+  isStuck?: boolean;
 }
 
 interface ActionListData {
@@ -82,7 +84,7 @@ function lastActionedLabel(daysInStatus: number | null): string {
   return `Last actioned ${daysInStatus} days ago`;
 }
 
-function ItemCard({ item }: { item: ActionItem }) {
+function ItemCard({ item, fromDate }: { item: ActionItem; fromDate?: string | null }) {
   const isCritical = item.priority === 'critical' && item.tatPosition === 'breach';
   const isUrgent = item.priority === 'urgent' || item.hasOverdueDelay;
 
@@ -128,6 +130,12 @@ function ItemCard({ item }: { item: ActionItem }) {
                 Status updated
               </span>
             )}
+            {item.isStuck && fromDate && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#FEE2E2] text-[#991B1B] text-[10px] font-semibold rounded-full ml-1">
+                <AlertOctagon className="w-2.5 h-2.5" strokeWidth={2.5} />
+                Unchanged since {fromDate}
+              </span>
+            )}
           </div>
           {/* Row 2: cause + value */}
           <div className="mt-0.5 text-xs text-[#6B7280]">
@@ -163,9 +171,11 @@ function ItemCard({ item }: { item: ActionItem }) {
 function PrioritySection({
   label,
   items,
+  fromDate,
 }: {
   label: string;
   items: ActionItem[];
+  fromDate?: string | null;
 }) {
   if (items.length === 0) return null;
   return (
@@ -174,7 +184,7 @@ function PrioritySection({
         {label} ({items.length})
       </h3>
       {items.map((item) => (
-        <ItemCard key={item.claimId} item={item} />
+        <ItemCard key={item.claimId} item={item} fromDate={fromDate} />
       ))}
     </div>
   );
@@ -189,6 +199,7 @@ export default function ActionList({
   const [data, setData] = useState<ActionListData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isComparing, resolvedFromDate, resolvedToDate } = useComparison();
 
   const fetchData = useCallback(
     (signal: AbortSignal) => {
@@ -196,6 +207,8 @@ export default function ActionList({
       setError(null);
 
       const params = new URLSearchParams({ handler: handlerName });
+      if (isComparing && resolvedFromDate) params.set('compareFrom', resolvedFromDate);
+      if (isComparing && resolvedToDate) params.set('compareTo', resolvedToDate);
       fetch(`/api/dashboard/my-work/action-list?${params}`, { signal })
         .then((res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -211,7 +224,7 @@ export default function ActionList({
           setLoading(false);
         });
     },
-    [handlerName],
+    [handlerName, isComparing, resolvedFromDate, resolvedToDate],
   );
 
   useEffect(() => {
@@ -245,6 +258,9 @@ export default function ActionList({
       !(i.priority === 'urgent' || i.hasOverdueDelay),
   );
 
+  // Comparison counts vs previous snapshot
+  const stuckCount = data.items.filter(i => i.isStuck).length;
+
   const displayName =
     handlerName === '__all__' ? 'All handlers' : (data.handlerName || handlerName);
 
@@ -263,15 +279,36 @@ export default function ActionList({
         />
       </div>
 
+      {/* Comparison banner */}
+      {isComparing && resolvedFromDate && (
+        <div className="flex items-center gap-3 flex-wrap mb-4 p-3 bg-[#EEF2FF] border border-[#1E5BC6]/30 rounded-xl">
+          <span className="text-xs font-semibold text-[#4F46E5]">vs {resolvedFromDate}</span>
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FEE2E2] text-[#991B1B]">
+            Critical {critical.length}
+          </span>
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#92400E]">
+            Urgent {urgent.length}
+          </span>
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-[#E8EEF8] text-[#0D2761]">
+            Standard {standard.length}
+          </span>
+          {stuckCount > 0 && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FEE2E2] text-[#7F1D1D]">
+              ⚠ {stuckCount} stuck
+            </span>
+          )}
+        </div>
+      )}
+
       {data.items.length === 0 ? (
         <p className="text-sm text-[#6B7280] py-6 text-center">
           All clear — no priority actions today.
         </p>
       ) : (
         <>
-          <PrioritySection label="Critical action" items={critical} />
-          <PrioritySection label="Urgent action" items={urgent} />
-          <PrioritySection label="Standard" items={standard} />
+          <PrioritySection label="Critical action" items={critical} fromDate={resolvedFromDate} />
+          <PrioritySection label="Urgent action" items={urgent} fromDate={resolvedFromDate} />
+          <PrioritySection label="Standard" items={standard} fromDate={resolvedFromDate} />
         </>
       )}
     </div>

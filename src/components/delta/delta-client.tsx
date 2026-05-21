@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { formatZAR, formatDate } from '@/lib/utils';
+import { useComparison } from '@/contexts/ComparisonContext';
+import { CompareBar } from '@/components/ui/compare-bar';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,8 @@ interface DeltaData {
   valueJumps: ValueJump[];
   reopened: ClaimSnap[];
   summary: DeltaSummary;
+  previousPeriodSummary: DeltaSummary | null;
+  handlers: string[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -292,13 +296,21 @@ export function DeltaClient() {
   const [data, setData] = useState<DeltaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('new');
+  const [handlerFilter, setHandlerFilter] = useState<string>('');
+  const { isComparing, resolvedFromDate, resolvedToDate } = useComparison();
 
   useEffect(() => {
-    fetch('/api/delta')
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (isComparing && resolvedFromDate) params.set('from', resolvedFromDate);
+    if (isComparing && resolvedToDate) params.set('to', resolvedToDate);
+    if (handlerFilter) params.set('handler', handlerFilter);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+
+    fetch(`/api/delta${qs}`)
       .then(r => r.json())
       .then((d: DeltaData) => {
         setData(d);
-        // Default to the tab with the most activity
         if (d.summary) {
           const counts: [TabId, number][] = [
             ['new', d.summary.new],
@@ -313,7 +325,7 @@ export function DeltaClient() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [isComparing, resolvedFromDate, resolvedToDate, handlerFilter]);
 
   if (loading) {
     return (
@@ -354,38 +366,71 @@ export function DeltaClient() {
   const { summary } = data;
   const totalChanges = summary.new + summary.finalised + summary.statusChanges + summary.valueJumps + summary.reopened;
 
+  const prevSummary = data.previousPeriodSummary;
+
   return (
     <div>
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-2xl font-semibold text-[#0D2761]">Daily Delta</h1>
         <p className="text-sm text-[#6B7280] mt-1">
           Comparing {formatDate(data.today)} vs {formatDate(data.yesterday)}
         </p>
       </div>
 
+      {/* Compare bar */}
+      <CompareBar />
+
+      {/* Handler filter */}
+      {data.handlers.length > 0 && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-[#6B7280] font-medium">Filter by handler:</span>
+          <select
+            value={handlerFilter}
+            onChange={e => setHandlerFilter(e.target.value)}
+            className="text-sm border border-[#E8EEF8] rounded-md px-2 py-1 text-[#0D2761] bg-white focus:outline-none focus:ring-2 focus:ring-[#1E5BC6]"
+          >
+            <option value="">All handlers</option>
+            {data.handlers.map(h => (
+              <option key={h} value={h}>{h}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Summary row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
         {[
-          { label: 'New Claims', value: summary.new, bg: '#E8EEF8', text: '#0D2761' },
-          { label: 'Finalised', value: summary.finalised, bg: '#D1FAE5', text: '#065F46' },
-          { label: 'Status Changes', value: summary.statusChanges, bg: '#FEF3C7', text: '#92400E' },
-          { label: 'Value Jumps', value: summary.valueJumps, bg: '#FEE2E2', text: '#991B1B' },
-          { label: 'Reopened', value: summary.reopened, bg: '#FEF3C7', text: '#92400E' },
-        ].map(item => (
-          <div
-            key={item.label}
-            className="rounded-xl p-4 text-center border"
-            style={{ backgroundColor: item.bg, borderColor: item.text + '22' }}
-          >
-            <p className="text-2xl font-semibold tabular-nums" style={{ color: item.text }}>
-              {item.value.toLocaleString()}
-            </p>
-            <p className="text-xs font-medium mt-1" style={{ color: item.text + 'bb' }}>
-              {item.label}
-            </p>
-          </div>
-        ))}
+          { label: 'New Claims', value: summary.new, prevValue: prevSummary?.new ?? null, bg: '#E8EEF8', text: '#0D2761', lowerBetter: false },
+          { label: 'Finalised', value: summary.finalised, prevValue: prevSummary?.finalised ?? null, bg: '#D1FAE5', text: '#065F46', lowerBetter: false },
+          { label: 'Status Changes', value: summary.statusChanges, prevValue: prevSummary?.statusChanges ?? null, bg: '#FEF3C7', text: '#92400E', lowerBetter: false },
+          { label: 'Value Jumps', value: summary.valueJumps, prevValue: prevSummary?.valueJumps ?? null, bg: '#FEE2E2', text: '#991B1B', lowerBetter: true },
+          { label: 'Reopened', value: summary.reopened, prevValue: prevSummary?.reopened ?? null, bg: '#FEF3C7', text: '#92400E', lowerBetter: true },
+        ].map(item => {
+          const delta = item.prevValue !== null ? item.value - item.prevValue : null;
+          const improved = delta !== null && (item.lowerBetter ? delta < 0 : delta > 0);
+          const trendColor = delta === null || delta === 0 ? item.text + '88' : improved ? '#16A34A' : '#DC2626';
+          const arrow = delta === null ? '' : delta === 0 ? '→' : delta < 0 ? '↓' : '↑';
+          return (
+            <div
+              key={item.label}
+              className="rounded-xl p-4 text-center border"
+              style={{ backgroundColor: item.bg, borderColor: item.text + '22' }}
+            >
+              <p className="text-2xl font-semibold tabular-nums" style={{ color: item.text }}>
+                {item.value.toLocaleString()}
+              </p>
+              <p className="text-xs font-medium mt-1" style={{ color: item.text + 'bb' }}>
+                {item.label}
+              </p>
+              {delta !== null && (
+                <p className="text-[10px] mt-1 tabular-nums font-medium" style={{ color: trendColor }}>
+                  {arrow} {Math.abs(delta)} vs prior period
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {totalChanges === 0 ? (

@@ -29,6 +29,9 @@ export async function fetchDailyHandlerReportData(handler: string): Promise<Dail
     },
   });
 
+  const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+  const tatMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
+
   const open = snapshots.filter(s => !s.claimStatus?.toLowerCase().includes('finalised'));
   const finalised = snapshots.filter(s => s.claimStatus?.toLowerCase().includes('finalised'));
   const avgOs = open.length > 0
@@ -65,12 +68,16 @@ export async function fetchDailyHandlerReportData(handler: string): Promise<Dail
   const focusAreas = open
     .sort((a, b) => (b.daysInCurrentStatus ?? 0) - (a.daysInCurrentStatus ?? 0))
     .slice(0, 3)
-    .map(s => ({
-      claimId: s.claimId,
-      reason: s.isTatBreach ? 'TAT breach' : `${s.daysInCurrentStatus ?? 0} days in status`,
-      daysInStatus: s.daysInCurrentStatus ?? 0,
-      totalOs: Number(s.totalOs ?? 0),
-    }));
+    .map(s => {
+      const tatCfg = s.secondaryStatus ? tatMap.get(s.secondaryStatus) : null;
+      const computedBreach = tatCfg ? (s.daysInCurrentStatus ?? 0) > tatCfg.maxDays : false;
+      return {
+        claimId: s.claimId,
+        reason: computedBreach ? 'TAT breach' : `${s.daysInCurrentStatus ?? 0} days in status`,
+        daysInStatus: s.daysInCurrentStatus ?? 0,
+        totalOs: Number(s.totalOs ?? 0),
+      };
+    });
 
   const wins: Array<{ label: string; note: string }> = [];
   if (finalised.length > 0) wins.push({ label: 'Claims finalised', note: `${finalised.length} claims closed` });

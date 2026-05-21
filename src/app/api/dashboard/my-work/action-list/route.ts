@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     let handlerParam = searchParams.get('handler');
+    const compareFrom = searchParams.get('compareFrom');
+    const compareTo = searchParams.get('compareTo');
 
     // CLAIMS_TECHNICIAN: force to their own name
     if (ctx.role === 'CLAIMS_TECHNICIAN') {
@@ -73,7 +75,13 @@ export async function GET(request: NextRequest) {
       select: { snapshotDate: true },
     });
 
-    const [tatConfigs, overdueDelays, prevSnaps] = await Promise.all([
+    // Resolve comparison snapshot date
+    let compareSnapshotDate: Date | null = null;
+    if (compareFrom) {
+      compareSnapshotDate = new Date(compareFrom);
+    }
+
+    const [tatConfigs, overdueDelays, prevSnaps, compareSnaps] = await Promise.all([
       prisma.tatConfig.findMany({ where: { isActive: true } }),
       claimIds.length > 0
         ? prisma.acknowledgedDelay.findMany({
@@ -87,25 +95,38 @@ export async function GET(request: NextRequest) {
             select: { claimId: true, secondaryStatus: true },
           })
         : Promise.resolve([]),
+      compareSnapshotDate && claimIds.length > 0
+        ? prisma.claimSnapshot.findMany({
+            where: { snapshotDate: compareSnapshotDate, claimId: { in: claimIds } },
+            select: { claimId: true, secondaryStatus: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const slaMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
     const delayMap = new Map(overdueDelays.map(d => [d.claimId, d]));
     const prevStatusMap = new Map(prevSnaps.map(p => [p.claimId, p.secondaryStatus]));
+    const compareStatusMap = new Map(compareSnaps.map(p => [p.claimId, p.secondaryStatus]));
 
     const items = snapshots.map(s => {
       const tatConfig = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;
       const delay = delayMap.get(s.claimId);
 
+      // Compute TAT breach from secondaryStatus + daysInCurrentStatus vs TAT matrix
+      // (do not trust the stored isTatBreach field which may reflect primary status)
+      const computedTatBreach = tatConfig
+        ? (s.daysInCurrentStatus ?? 0) > tatConfig.maxDays
+        : false;
+
       let priority: Priority = 'standard';
-      if (s.isTatBreach && tatConfig?.priority === 'critical') {
+      if (computedTatBreach && tatConfig?.priority === 'critical') {
         priority = 'critical';
-      } else if (s.isTatBreach || delay?.isOverdue) {
+      } else if (computedTatBreach || delay?.isOverdue) {
         priority = 'urgent';
       }
 
       let tatPosition: 'on-track' | 'at-risk' | 'breach' = 'on-track';
-      if (s.isTatBreach) {
+      if (computedTatBreach) {
         tatPosition = 'breach';
       } else if (tatConfig && s.daysInCurrentStatus && s.daysInCurrentStatus > tatConfig.maxDays * 0.8) {
         tatPosition = 'at-risk';
@@ -116,6 +137,13 @@ export async function GET(request: NextRequest) {
         : null;
       const prevSecondaryStatus = prevStatusMap.has(s.claimId) ? (prevStatusMap.get(s.claimId) ?? null) : null;
       const statusChanged = prevStatusMap.has(s.claimId) && prevSecondaryStatus !== s.secondaryStatus;
+
+      // isStuck: claim existed in compare snapshot with same secondaryStatus, still critical/urgent
+      const compareSecondaryStatus = compareStatusMap.get(s.claimId);
+      const isStuck = compareSnapshotDate !== null
+        && compareSecondaryStatus !== undefined
+        && compareSecondaryStatus === s.secondaryStatus
+        && (priority === 'critical' || priority === 'urgent');
 
       return {
         claimId: s.claimId,
@@ -131,6 +159,7 @@ export async function GET(request: NextRequest) {
         lastActionedDate,
         statusChanged,
         previousSecondaryStatus: statusChanged ? prevSecondaryStatus : null,
+        isStuck,
       };
     });
 
