@@ -411,29 +411,30 @@ function buildPage2(doc: jsPDF, d: HandlerPerformancePDFData) {
   textC(doc, C.gray);
   doc.text('open', cx, cy + 4, { align: 'center' });
 
-  // Legend
-  const legendX = cx + r + 8;
-  let legendY = cy - r + 5;
+  // Legend — horizontal row below the doughnut (stays within the left half)
   const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
-  doc.setFontSize(7.5);
-  for (const seg of segments) {
+  const legendRowY = cy + r + 8;
+  const legendItemW = 44;
+  const legendStartX = Math.max(14, cx - (segments.length * legendItemW) / 2);
+  doc.setFontSize(7);
+  segments.forEach((seg, i) => {
+    const lx = legendStartX + i * legendItemW;
     doc.setFillColor(seg.color[0], seg.color[1], seg.color[2]);
-    doc.rect(legendX, legendY - 3, 4, 4, 'F');
+    doc.rect(lx, legendRowY - 3, 3, 3, 'F');
     doc.setFont('helvetica', 'normal');
     textC(doc, C.navy);
-    doc.text(`${seg.label}  ${seg.value}  (${((seg.value / total) * 100).toFixed(0)}%)`, legendX + 6, legendY);
-    legendY += 7;
-  }
+    doc.text(`${seg.label}  ${seg.value}  (${((seg.value / total) * 100).toFixed(0)}%)`, lx + 5, legendRowY, { maxWidth: legendItemW - 6 });
+  });
 
   doc.setFontSize(7);
   textC(doc, C.gray);
-  doc.text(`Current Portfolio Breakdown — ${d.portfolio.totalOpen} open claims`, cx, cy + r + 6, { align: 'center' });
+  doc.text(`Portfolio — ${d.portfolio.totalOpen} open claims`, cx, legendRowY + 8, { align: 'center' });
 
-  // Bar chart (right half)
-  const chartX = pageW / 2 + 5;
-  const chartY = y + 4;
-  const chartW = pageW / 2 - 20;
-  const chartH = 56;
+  // Bar chart — right half, safely separated from doughnut legend
+  const chartX = pageW / 2 + 8;
+  const chartY = y + 6;
+  const chartW = pageW / 2 - 24;
+  const chartH = 50;
 
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
@@ -445,7 +446,10 @@ function buildPage2(doc: jsPDF, d: HandlerPerformancePDFData) {
     { label: 'Finalised', bars: [{ value: d.finalisedInPeriod, color: C.green, label: 'Closed' }] },
   ]);
 
-  y = cy + r + 16;
+  // Advance y past whichever section is taller
+  const doughnutBottom = legendRowY + 14;
+  const chartBottom = chartY + chartH + 10;
+  y = Math.max(doughnutBottom, chartBottom) + 6;
 
   // Stuck claims callout
   if (d.stuckClaims.length > 0) {
