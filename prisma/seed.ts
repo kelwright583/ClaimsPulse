@@ -21,6 +21,14 @@ const SLA_SEED = [
   { secondaryStatus: 'Repair Completed - Awaiting Invoice', maxDays: 14, alertRole: 'handler', priority: 'standard' },
   { secondaryStatus: 'Salvage Recovery in Process', maxDays: 30, alertRole: 'both', priority: 'standard' },
   { secondaryStatus: 'Own damage claim finalised, TP claim in Process', maxDays: 60, alertRole: 'tp_handler', priority: 'standard' },
+  { secondaryStatus: 'TP Liability Claim in Progress', maxDays: 60, alertRole: 'tp_handler', priority: 'standard' },
+  { secondaryStatus: 'TP Recovery Claim in Progress', maxDays: 60, alertRole: 'tp_handler', priority: 'standard' },
+  { secondaryStatus: 'Claim for Notification Purposes Only', maxDays: 30, alertRole: 'handler', priority: 'standard' },
+  { secondaryStatus: 'Claim Settled', maxDays: 14, alertRole: 'handler', priority: 'standard' },
+  { secondaryStatus: 'Claim Rejected - Ex Gratia Settlement Approved', maxDays: 7, alertRole: 'both', priority: 'urgent' },
+  { secondaryStatus: 'Claim Rejected', maxDays: 5, alertRole: 'handler', priority: 'urgent' },
+  { secondaryStatus: 'Assessment Received', maxDays: 3, alertRole: 'handler', priority: 'urgent' },
+  { secondaryStatus: 'Claim Registered', maxDays: 1, alertRole: 'handler', priority: 'critical' },
   { secondaryStatus: 'None', maxDays: 3, alertRole: 'head_of_claims', priority: 'urgent' },
 ];
 
