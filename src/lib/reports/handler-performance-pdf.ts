@@ -26,6 +26,7 @@ export interface HandlerPerformancePDFData {
     finalisedPrevious: number | null;
   };
 
+  statusChanges: number;
   wins: { finalisedCount: number; improvedCount: number; movedOutOfCritical: number };
 
   resolvedClaims: Array<{
@@ -225,28 +226,59 @@ function drawMetricCard(
 ) {
   drawCard(doc, x, y, w, h);
 
-  // Label
-  setFont(doc, 'normal', 5.5);
+  // Label — generous padding from top
+  setFont(doc, 'normal', 7);
   textColor(doc, C.gray);
-  doc.text(label.toUpperCase(), x + 5, y + 7);
+  doc.text(label.toUpperCase(), x + 5, y + 8);
 
-  // Value
-  setFont(doc, 'bold', 15);
+  // Value — large and bold
+  setFont(doc, 'bold', 14);
   textColor(doc, C.navy);
-  doc.text(value, x + 5, y + 18, { maxWidth: w - 8 });
+  doc.text(value, x + 5, y + 19, { maxWidth: w - 8 });
 
-  // Delta row
+  // Delta — two lines so nothing overlaps
   if (prev !== null) {
     const { arrow, color, delta } = deltaArrow(curr, prev, lowerIsBetter);
     const deltaStr = isRand ? fmtRand(Math.abs(delta)) : String(Math.abs(delta));
     const prevStr  = isRand ? fmtRand(prev) : String(prev);
-    setFont(doc, 'normal', 6.5);
+
+    // Line 1: arrow + delta value (coloured)
+    setFont(doc, 'bold', 7);
     textColor(doc, color);
-    doc.text(`${arrow} ${deltaStr}`, x + 5, y + 25);
-    setFont(doc, 'normal', 6);
+    doc.text(`${arrow} ${deltaStr}`, x + 5, y + 27);
+
+    // Line 2: "vs [prev]" (dimmed)
+    setFont(doc, 'normal', 6.5);
     textColor(doc, C.dimGray);
-    doc.text(`vs ${prevStr}`, x + 5 + doc.getTextWidth(`${arrow} ${deltaStr}  `), y + 25);
+    doc.text(`vs ${prevStr}`, x + 5, y + 33);
   }
+}
+
+/** Headline KPI card — larger, no delta, used for the top-of-page summary strip */
+function drawKpiCard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  value: string,
+  sub: string,
+  accentColor: [number, number, number],
+) {
+  drawCard(doc, x, y, w, h, { accentColor });
+
+  setFont(doc, 'normal', 7);
+  textColor(doc, C.gray);
+  doc.text(label.toUpperCase(), x + 8, y + 8);
+
+  setFont(doc, 'bold', 20);
+  textColor(doc, C.navy);
+  doc.text(value, x + 8, y + 22, { maxWidth: w - 12 });
+
+  setFont(doc, 'normal', 7);
+  textColor(doc, C.dimGray);
+  doc.text(sub, x + 8, y + 29);
 }
 
 // ── Doughnut helper ───────────────────────────────────────────────────────────
@@ -354,13 +386,35 @@ function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
   doc.text(`Good morning, ${d.firstName}.`, 14, y);
   y += 7;
 
-  setFont(doc, 'normal', 8.5);
+  const periodLabel = d.compareFrom
+    ? `${fmtDate(d.compareFrom)} — ${fmtDate(d.compareTo)}`
+    : fmtDate(d.compareTo);
+  setFont(doc, 'normal', 8);
   textColor(doc, C.gray);
-  const subtitle = d.compareFrom
-    ? `Performance snapshot for ${fmtDate(d.compareTo)}, compared against ${fmtDate(d.compareFrom)}.`
-    : `Performance snapshot for ${fmtDate(d.compareTo)}.`;
-  doc.text(doc.splitTextToSize(subtitle, W - 28), 14, y);
-  y += 9;
+  doc.text(`Performance snapshot  ·  ${periodLabel}`, 14, y);
+  y += 10;
+
+  // ── Headline KPI strip (Registered · Status Changes · Outstanding) ───────────
+  const kpiW = (W - 28 - 8) / 3;
+  const kpiH = 34;
+  const kpiGap = 4;
+
+  drawKpiCard(doc, 14,                   y, kpiW, kpiH,
+    'Claims Registered', String(d.registeredInPeriod),
+    d.compareFrom ? `between ${fmtDate(d.compareFrom)} and ${fmtDate(d.compareTo)}` : `as of ${fmtDate(d.compareTo)}`,
+    C.blue);
+
+  drawKpiCard(doc, 14 + kpiW + kpiGap,   y, kpiW, kpiH,
+    'Status Changes', String(d.statusChanges),
+    d.compareFrom ? `between ${fmtDate(d.compareFrom)} and ${fmtDate(d.compareTo)}` : 'comparison required',
+    C.amber);
+
+  drawKpiCard(doc, 14 + (kpiW + kpiGap) * 2, y, kpiW, kpiH,
+    'Est. Outstanding', fmtRand(d.metrics.totalOsCurrent),
+    `across ${d.portfolio.totalOpen} open claims`,
+    C.navy);
+
+  y += kpiH + 8;
 
   // ── Highlights ──────────────────────────────────────────────────────────────
   sectionTitle(doc, 14, y, 'HIGHLIGHTS');
@@ -368,26 +422,28 @@ function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
 
   const winsLines: string[] = [];
   if (d.wins.finalisedCount > 0)
-    winsLines.push(`Finalised ${d.wins.finalisedCount} claim${d.wins.finalisedCount !== 1 ? 's' : ''} this period.`);
+    winsLines.push(`Finalised ${d.wins.finalisedCount} claim${d.wins.finalisedCount !== 1 ? 's' : ''} between ${d.compareFrom ? fmtDate(d.compareFrom) : '—'} and ${fmtDate(d.compareTo)}.`);
   if (d.wins.movedOutOfCritical > 0)
     winsLines.push(`Moved ${d.wins.movedOutOfCritical} claim${d.wins.movedOutOfCritical !== 1 ? 's' : ''} out of critical.`);
   if (d.wins.improvedCount > 0)
     winsLines.push(`${d.wins.improvedCount} claim${d.wins.improvedCount !== 1 ? 's' : ''} improved priority.`);
   if (winsLines.length === 0)
-    winsLines.push('No finalisations this period — work the priority list on page 3.');
+    winsLines.push('No finalisations recorded for this comparison period — work the priority list on page 3.');
 
   const hasTable = d.resolvedClaims.length > 0;
-  const winsH = hasTable ? 14 + d.resolvedClaims.slice(0, 5).length * 6 + 8 : 14;
+  const winsH = hasTable ? 14 + d.resolvedClaims.slice(0, 5).length * 6 + 8 : 16;
 
   drawCard(doc, 14, y, W - 28, winsH, { accentColor: C.green, bgColor: C.lightGreen });
 
   setFont(doc, 'normal', 8);
   textColor(doc, C.darkGreen);
-  doc.text(winsLines.join('   ·   '), 20, y + 7, { maxWidth: W - 36 });
+  winsLines.forEach((line, i) => {
+    doc.text(line, 20, y + 7 + i * 6, { maxWidth: W - 36 });
+  });
 
   if (hasTable) {
     autoTable(doc, {
-      startY: y + 11,
+      startY: y + 7 + winsLines.length * 6 + 2,
       margin: { left: 20, right: 14 },
       head: [['Claim ID', 'Previous Status', 'Current Status', 'Outstanding']],
       body: d.resolvedClaims.slice(0, 5).map(c => [
@@ -405,21 +461,21 @@ function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
 
   y += winsH + 8;
 
-  // ── Performance metrics grid (3 × 2) ─────────────────────────────────────────
-  sectionTitle(doc, 14, y, 'PERFORMANCE METRICS');
+  // ── Comparison metrics grid (3 × 2) ──────────────────────────────────────────
+  sectionTitle(doc, 14, y, 'COMPARISON METRICS');
   y += 7;
 
   const metrics = [
-    { label: 'Critical Claims',    curr: d.metrics.criticalCurrent,    prev: d.metrics.criticalPrevious,    lower: true,  rand: false },
-    { label: 'Urgent Claims',      curr: d.metrics.urgentCurrent,      prev: d.metrics.urgentPrevious,      lower: true,  rand: false },
-    { label: 'Standard Claims',    curr: d.metrics.standardCurrent,    prev: d.metrics.standardPrevious,    lower: false, rand: false },
-    { label: 'TAT Breaches',       curr: d.metrics.tatBreachesCurrent, prev: d.metrics.tatBreachesPrevious, lower: true,  rand: false },
-    { label: 'Total Outstanding',  curr: d.metrics.totalOsCurrent,     prev: d.metrics.totalOsPrevious,     lower: true,  rand: true  },
-    { label: 'Claims Finalised',   curr: d.metrics.finalisedCurrent,   prev: d.metrics.finalisedPrevious,   lower: false, rand: false },
+    { label: 'Critical Claims',   curr: d.metrics.criticalCurrent,    prev: d.metrics.criticalPrevious,    lower: true,  rand: false },
+    { label: 'Urgent Claims',     curr: d.metrics.urgentCurrent,      prev: d.metrics.urgentPrevious,      lower: true,  rand: false },
+    { label: 'Standard Claims',   curr: d.metrics.standardCurrent,    prev: d.metrics.standardPrevious,    lower: false, rand: false },
+    { label: 'TAT Breaches',      curr: d.metrics.tatBreachesCurrent, prev: d.metrics.tatBreachesPrevious, lower: true,  rand: false },
+    { label: 'Total Outstanding', curr: d.metrics.totalOsCurrent,     prev: d.metrics.totalOsPrevious,     lower: true,  rand: true  },
+    { label: 'Claims Finalised',  curr: d.metrics.finalisedCurrent,   prev: d.metrics.finalisedPrevious,   lower: false, rand: false },
   ];
 
-  const cardW = (W - 28 - 8) / 3;
-  const cardH = 30;
+  const cardW  = (W - 28 - 8) / 3;
+  const cardH  = 38; // taller to accommodate two-line delta
   const colGap = 4;
 
   metrics.forEach((m, i) => {

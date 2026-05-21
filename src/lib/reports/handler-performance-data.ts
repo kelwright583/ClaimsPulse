@@ -50,41 +50,44 @@ export async function fetchHandlerPerformanceData(
 
   const classified = openSnaps.map(classifySnap);
   const criticalItems = classified.filter(i => i.priority === 'critical');
-  const urgentItems = classified.filter(i => i.priority === 'urgent');
+  const urgentItems   = classified.filter(i => i.priority === 'urgent');
   const standardItems = classified.filter(i => i.priority === 'standard');
-  const finalisedSnaps = toSnaps.filter(s => s.claimStatus?.toLowerCase().includes('finalised'));
 
   const portfolio = {
     critical: criticalItems.length,
-    urgent: urgentItems.length,
+    urgent:   urgentItems.length,
     standard: standardItems.length,
-    finalised: finalisedSnaps.length,
+    finalised: toSnaps.filter(s => s.claimStatus?.toLowerCase().includes('finalised')).length,
     totalOpen: openSnaps.length,
   };
 
-  // Comparison data
-  let fromDate: Date | null = null;
   let metrics = {
-    criticalCurrent: criticalItems.length,
-    criticalPrevious: null as number | null,
-    urgentCurrent: urgentItems.length,
-    urgentPrevious: null as number | null,
-    standardCurrent: standardItems.length,
-    standardPrevious: null as number | null,
-    tatBreachesCurrent: classified.filter(i => i.tatBreach).length,
-    tatBreachesPrevious: null as number | null,
-    totalOsCurrent: openSnaps.reduce((s, c) => s + Number(c.totalOs ?? 0), 0),
-    totalOsPrevious: null as number | null,
-    finalisedCurrent: finalisedSnaps.length,
-    finalisedPrevious: null as number | null,
+    criticalCurrent:      criticalItems.length,
+    criticalPrevious:     null as number | null,
+    urgentCurrent:        urgentItems.length,
+    urgentPrevious:       null as number | null,
+    standardCurrent:      standardItems.length,
+    standardPrevious:     null as number | null,
+    tatBreachesCurrent:   classified.filter(i => i.tatBreach).length,
+    tatBreachesPrevious:  null as number | null,
+    totalOsCurrent:       openSnaps.reduce((s, c) => s + Number(c.totalOs ?? 0), 0),
+    totalOsPrevious:      null as number | null,
+    finalisedCurrent:     0,
+    finalisedPrevious:    null as number | null,
   };
 
-  let wins = { finalisedCount: finalisedSnaps.length, improvedCount: 0, movedOutOfCritical: 0 };
+  let wins = { finalisedCount: 0, improvedCount: 0, movedOutOfCritical: 0 };
   let resolvedClaims: HandlerPerformancePDFData['resolvedClaims'] = [];
-  let stuckClaims: HandlerPerformancePDFData['stuckClaims'] = [];
+  let stuckClaims:    HandlerPerformancePDFData['stuckClaims']    = [];
+  let statusChanges = 0;
+
+  // registeredInPeriod — new claims on toDate
+  const registeredInPeriod = await prisma.claimSnapshot.count({
+    where: { handler, snapshotDate: toDate, deltaFlags: { path: ['new_claim'], equals: true } },
+  }).catch(() => 0);
 
   if (fromDateStr) {
-    fromDate = new Date(fromDateStr);
+    const fromDate = new Date(fromDateStr);
     const fromSnaps = await prisma.claimSnapshot.findMany({
       where: { handler, snapshotDate: fromDate },
       select: { claimId: true, secondaryStatus: true, daysInCurrentStatus: true, totalOs: true, claimStatus: true },
@@ -99,21 +102,33 @@ export async function fetchHandlerPerformanceData(
       tatBreach: computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap),
     }));
 
+    // Claims that closed during the period (were open at fromDate, not open at toDate)
+    const toOpenIds = new Set(openSnaps.map(s => s.claimId));
+    const finalisedInPeriod = fromOpen.filter(s => !toOpenIds.has(s.claimId)).length;
+
+    // Status changes — claims in both snapshots where secondaryStatus changed
+    const fromMap  = new Map(fromClassified.map(i => [i.claimId, i]));
+    const toMap    = new Map(classified.map(i => [i.claimId, i]));
+    for (const [claimId, prev] of fromMap) {
+      const curr = toMap.get(claimId);
+      if (curr && curr.secondaryStatus !== prev.secondaryStatus) statusChanges++;
+    }
+
     metrics = {
       ...metrics,
-      criticalPrevious: fromClassified.filter(i => i.priority === 'critical').length,
-      urgentPrevious: fromClassified.filter(i => i.priority === 'urgent').length,
-      standardPrevious: fromClassified.filter(i => i.priority === 'standard').length,
+      criticalPrevious:    fromClassified.filter(i => i.priority === 'critical').length,
+      urgentPrevious:      fromClassified.filter(i => i.priority === 'urgent').length,
+      standardPrevious:    fromClassified.filter(i => i.priority === 'standard').length,
       tatBreachesPrevious: fromClassified.filter(i => i.tatBreach).length,
-      totalOsPrevious: fromSnaps.reduce((s, c) => s + Number(c.totalOs ?? 0), 0),
-      finalisedPrevious: fromSnaps.filter(s => s.claimStatus?.toLowerCase().includes('finalised')).length,
+      totalOsPrevious:     fromSnaps.reduce((s, c) => s + Number(c.totalOs ?? 0), 0),
+      finalisedCurrent:    finalisedInPeriod,
+      finalisedPrevious:   null,
     };
 
-    const fromMap = new Map(fromClassified.map(i => [i.claimId, i]));
-    const toMap = new Map(classified.map(i => [i.claimId, i]));
+    wins.finalisedCount = finalisedInPeriod;
+
     const priorityRank: Record<string, number> = { critical: 2, urgent: 1, standard: 0 };
 
-    // Stuck claims
     stuckClaims = classified
       .filter(curr => {
         const prev = fromMap.get(curr.claimId);
@@ -122,7 +137,6 @@ export async function fetchHandlerPerformanceData(
       })
       .map(i => ({ claimId: i.claimId, secondaryStatus: i.secondaryStatus ?? '', daysInStatus: i.daysInStatus, outstanding: i.outstanding }));
 
-    // Resolved/improved
     for (const [claimId, prev] of fromMap) {
       const curr = toMap.get(claimId);
       if (!curr) {
@@ -136,15 +150,9 @@ export async function fetchHandlerPerformanceData(
     }
   }
 
-  // Derive first name
-  const firstName = handler.trim().split(' ')[0];
-  const compareTo = toDateStr ?? toDate.toISOString().split('T')[0];
+  const firstName  = handler.trim().split(' ')[0];
+  const compareTo  = toDateStr ?? toDate.toISOString().split('T')[0];
   const compareFrom = fromDateStr ?? null;
-
-  // Claims movement
-  const registeredInPeriod = await prisma.claimSnapshot.count({
-    where: { handler, snapshotDate: toDate, deltaFlags: { path: ['new_claim'], equals: true } },
-  }).catch(() => 0);
 
   return {
     handler,
@@ -152,33 +160,25 @@ export async function fetchHandlerPerformanceData(
     reportDate: compareTo,
     compareFrom,
     compareTo,
+    statusChanges,
     metrics,
     wins,
     resolvedClaims: resolvedClaims.slice(0, 30),
-    stuckClaims: stuckClaims.slice(0, 30),
+    stuckClaims:    stuckClaims.slice(0, 30),
     criticalItems: criticalItems.slice(0, 50).map(i => ({
-      claimId: i.claimId,
-      secondaryStatus: i.secondaryStatus ?? '',
-      daysInStatus: i.daysInStatus,
-      outstanding: i.outstanding,
-      tatStatus: i.tatStatus,
+      claimId: i.claimId, secondaryStatus: i.secondaryStatus ?? '',
+      daysInStatus: i.daysInStatus, outstanding: i.outstanding, tatStatus: i.tatStatus,
     })),
     urgentItems: urgentItems.slice(0, 100).map(i => ({
-      claimId: i.claimId,
-      secondaryStatus: i.secondaryStatus ?? '',
-      daysInStatus: i.daysInStatus,
-      outstanding: i.outstanding,
-      tatStatus: i.tatStatus,
+      claimId: i.claimId, secondaryStatus: i.secondaryStatus ?? '',
+      daysInStatus: i.daysInStatus, outstanding: i.outstanding, tatStatus: i.tatStatus,
     })),
     standardItems: standardItems.slice(0, 200).map(i => ({
-      claimId: i.claimId,
-      secondaryStatus: i.secondaryStatus ?? '',
-      daysInStatus: i.daysInStatus,
-      outstanding: i.outstanding,
-      tatStatus: i.tatStatus,
+      claimId: i.claimId, secondaryStatus: i.secondaryStatus ?? '',
+      daysInStatus: i.daysInStatus, outstanding: i.outstanding, tatStatus: i.tatStatus,
     })),
     portfolio,
     registeredInPeriod,
-    finalisedInPeriod: finalisedSnaps.length,
+    finalisedInPeriod: metrics.finalisedCurrent,
   };
 }
