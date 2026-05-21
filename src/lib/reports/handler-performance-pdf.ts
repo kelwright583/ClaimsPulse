@@ -201,16 +201,15 @@ function drawCard(
 
 /** Horizontal rule with label */
 function sectionTitle(doc: jsPDF, x: number, y: number, label: string) {
-  setFont(doc, 'bold', 7);
+  const W = doc.internal.pageSize.getWidth();
+  setFont(doc, 'bold', 10);
   textColor(doc, C.navy);
   doc.text(label, x, y);
-
-  const W = doc.internal.pageSize.getWidth();
-  stroke(doc, C.cardBorder, 0.3);
-  doc.line(x, y + 2, W - 14, y + 2);
+  stroke(doc, [200, 210, 232] as [number, number, number], 0.5);
+  doc.line(x, y + 3, W - 14, y + 3);
 }
 
-/** Unified card — same large aesthetic for every card on the report.
+/** Unified card — same aesthetic as the modal DeltaMetricCard.
  *  Pass `prev` + `curr` + `lowerIsBetter` for comparison cards (shows delta).
  *  Pass `sub` for informational cards (shows a subtitle line instead). */
 function drawUnifiedCard(
@@ -233,33 +232,37 @@ function drawUnifiedCard(
   const { label, value, accent, prev, curr, lowerIsBetter = true, isRand = false, sub } = opts;
   drawCard(doc, x, y, w, h, { accentColor: accent });
 
-  // Label
-  setFont(doc, 'normal', 7);
+  // Label — bold, uppercase, letter-spaced (matches modal's tracking-wide semibold)
+  setFont(doc, 'bold', 7.5);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (doc as any).setCharSpace(0.4);
   textColor(doc, C.gray);
-  doc.text(label.toUpperCase(), x + 8, y + 8);
+  doc.text(label.toUpperCase(), x + 7, y + 8);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (doc as any).setCharSpace(0);
 
-  // Value
-  setFont(doc, 'bold', 20);
+  // Value — prominent (matches modal's text-2xl font-bold)
+  setFont(doc, 'bold', 17);
   textColor(doc, C.navy);
-  doc.text(value, x + 8, y + 22, { maxWidth: w - 14 });
+  doc.text(value, x + 7, y + 19, { maxWidth: w - 13 });
 
-  // Comparison delta (two lines) OR plain sub text
+  // Delta (two tight lines) OR plain sub text
   if (prev !== null && prev !== undefined && curr !== undefined) {
     const { arrow, color, delta } = deltaArrow(curr, prev, lowerIsBetter);
     const deltaStr = isRand ? fmtRand(Math.abs(delta)) : String(Math.abs(delta));
     const prevStr  = isRand ? fmtRand(prev) : String(prev);
 
-    setFont(doc, 'bold', 7);
+    setFont(doc, 'bold', 7.5);
     textColor(doc, color);
-    doc.text(`${arrow} ${deltaStr}`, x + 8, y + 31);
+    doc.text(`${arrow} ${deltaStr}`, x + 7, y + 27);
 
-    setFont(doc, 'normal', 6.5);
+    setFont(doc, 'normal', 7);
     textColor(doc, C.dimGray);
-    doc.text(`vs ${prevStr}`, x + 8, y + 37);
+    doc.text(`vs ${prevStr}`, x + 7, y + 33);
   } else if (sub) {
-    setFont(doc, 'normal', 6.5);
+    setFont(doc, 'normal', 7);
     textColor(doc, C.dimGray);
-    doc.text(sub, x + 8, y + 31, { maxWidth: w - 14 });
+    doc.text(sub, x + 7, y + 27, { maxWidth: w - 13 });
   }
 }
 
@@ -360,9 +363,10 @@ function drawBarChart(
 
 function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
   const W = doc.internal.pageSize.getWidth();
-  let y = 26;
+  // Extra top padding so there's breathing room below the header band
+  let y = 32;
 
-  // Greeting
+  // ── Greeting ────────────────────────────────────────────────────────────────
   setFont(doc, 'bold', 17);
   textColor(doc, C.navy);
   doc.text(`Good morning, ${d.firstName}.`, 14, y);
@@ -371,90 +375,14 @@ function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
   const periodLabel = d.compareFrom
     ? `${fmtDate(d.compareFrom)} — ${fmtDate(d.compareTo)}`
     : fmtDate(d.compareTo);
-  setFont(doc, 'normal', 8);
+  setFont(doc, 'normal', 8.5);
   textColor(doc, C.gray);
   doc.text(`Performance snapshot  ·  ${periodLabel}`, 14, y);
-  y += 9;
+  y += 12;
 
-  // ── Unified 3×3 metrics grid ─────────────────────────────────────────────────
-  sectionTitle(doc, 14, y, 'KEY METRICS');
-  y += 6;
-
-  const cardW  = (W - 28 - 8) / 3;  // 3 cols, 2 gaps of 4mm
-  const cardH  = 43;                  // tall enough for two delta lines
-  const colGap = 4;
-  const rowGap = 4;
-
-  const periodSub = d.compareFrom
-    ? `${fmtDate(d.compareFrom)} — ${fmtDate(d.compareTo)}`
-    : `as of ${fmtDate(d.compareTo)}`;
-
-  const cards: Array<Parameters<typeof drawUnifiedCard>[5]> = [
-    // Row 1 — period activity (informational)
-    {
-      label: 'Claims Registered', value: String(d.registeredInPeriod),
-      accent: C.blue, sub: periodSub,
-    },
-    {
-      label: 'Status Changes', value: String(d.statusChanges),
-      accent: C.amber, sub: d.compareFrom ? periodSub : 'comparison required',
-    },
-    {
-      label: 'No Movement', value: String(d.stuckClaims.length),
-      accent: C.red, sub: 'critical & urgent — no status change',
-    },
-    // Row 2 — priority snapshot with comparison
-    {
-      label: 'Critical Claims', value: String(d.metrics.criticalCurrent),
-      accent: C.red,
-      curr: d.metrics.criticalCurrent, prev: d.metrics.criticalPrevious, lowerIsBetter: true,
-    },
-    {
-      label: 'Urgent Claims', value: String(d.metrics.urgentCurrent),
-      accent: C.amber,
-      curr: d.metrics.urgentCurrent, prev: d.metrics.urgentPrevious, lowerIsBetter: true,
-    },
-    {
-      label: 'Standard Claims', value: String(d.metrics.standardCurrent),
-      accent: C.blue,
-      curr: d.metrics.standardCurrent, prev: d.metrics.standardPrevious, lowerIsBetter: false,
-    },
-    // Row 3 — financials & outcomes with comparison
-    {
-      label: 'TAT Breaches', value: String(d.metrics.tatBreachesCurrent),
-      accent: C.darkRed,
-      curr: d.metrics.tatBreachesCurrent, prev: d.metrics.tatBreachesPrevious, lowerIsBetter: true,
-    },
-    {
-      label: 'Est. Outstanding', value: fmtRand(d.metrics.totalOsCurrent),
-      accent: C.navy,
-      curr: d.metrics.totalOsCurrent, prev: d.metrics.totalOsPrevious, lowerIsBetter: true, isRand: true,
-    },
-    {
-      label: 'Claims Finalised', value: String(d.metrics.finalisedCurrent),
-      accent: C.green,
-      curr: d.metrics.finalisedCurrent, prev: d.metrics.finalisedPrevious, lowerIsBetter: false,
-    },
-  ];
-
-  cards.forEach((card, i) => {
-    const col = i % 3;
-    const row = Math.floor(i / 3);
-    drawUnifiedCard(
-      doc,
-      14 + col * (cardW + colGap),
-      y + row * (cardH + rowGap),
-      cardW,
-      cardH,
-      card,
-    );
-  });
-
-  y += 3 * (cardH + rowGap) + 4;
-
-  // ── Highlights ──────────────────────────────────────────────────────────────
+  // ── Highlights (shown first — the encouraging bit) ───────────────────────────
   sectionTitle(doc, 14, y, 'HIGHLIGHTS');
-  y += 6;
+  y += 8;
 
   const winsLines: string[] = [];
   if (d.wins.finalisedCount > 0)
@@ -467,28 +395,74 @@ function buildPage1(doc: jsPDF, d: HandlerPerformancePDFData) {
     winsLines.push('No finalisations recorded for this comparison period — work the priority list on page 3.');
 
   const hasTable = d.resolvedClaims.length > 0;
-  const winsH = hasTable ? 10 + winsLines.length * 6 + d.resolvedClaims.slice(0, 5).length * 6 + 6 : 10 + winsLines.length * 6 + 4;
+  const winsH = hasTable
+    ? 10 + winsLines.length * 6.5 + d.resolvedClaims.slice(0, 4).length * 6 + 6
+    : 8 + winsLines.length * 6.5 + 4;
 
   drawCard(doc, 14, y, W - 28, winsH, { accentColor: C.green, bgColor: C.lightGreen });
-  setFont(doc, 'normal', 8);
+  setFont(doc, 'normal', 8.5);
   textColor(doc, C.darkGreen);
-  winsLines.forEach((line, i) => doc.text(line, 20, y + 7 + i * 6, { maxWidth: W - 36 }));
+  winsLines.forEach((line, i) => doc.text(line, 21, y + 8 + i * 6.5, { maxWidth: W - 36 }));
 
   if (hasTable) {
     autoTable(doc, {
-      startY: y + 7 + winsLines.length * 6 + 1,
-      margin: { left: 20, right: 14 },
+      startY: y + 8 + winsLines.length * 6.5 + 1,
+      margin: { left: 21, right: 14 },
       head: [['Claim ID', 'Previous Status', 'Current Status', 'Outstanding']],
-      body: d.resolvedClaims.slice(0, 5).map(c => [
+      body: d.resolvedClaims.slice(0, 4).map(c => [
         (c.currentStatus === null ? '✓ ' : '') + c.claimId,
         c.previousStatus, c.currentStatus ?? 'Resolved', fmtRand(c.outstanding),
       ]),
-      styles: { fontSize: 7, cellPadding: [2, 3], font: _usePoppins ? 'Poppins' : 'helvetica' },
-      headStyles: { fillColor: C.green, textColor: C.white, fontStyle: 'bold', fontSize: 6.5, cellPadding: [2, 3] },
-      alternateRowStyles: { fillColor: [220, 252, 231] },
+      styles: { fontSize: 7.5, cellPadding: [2.5, 3], font: _usePoppins ? 'Poppins' : 'helvetica' },
+      headStyles: { fillColor: C.green, textColor: C.white, fontStyle: 'bold', fontSize: 7, cellPadding: [2.5, 3] },
+      alternateRowStyles: { fillColor: [220, 252, 231] as [number, number, number] },
       theme: 'plain',
     });
+    const last = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable;
+    y = (last?.finalY ?? y + winsH) + 6;
+  } else {
+    y += winsH + 6;
   }
+
+  // ── Key Metrics grid (3×3) ───────────────────────────────────────────────────
+  sectionTitle(doc, 14, y, 'KEY METRICS');
+  y += 8;
+
+  const cardW  = (W - 28 - 8) / 3;  // 3 cols, 2 inner gaps of 4mm
+  const cardH  = 36;                  // slimmer than before — proportional to modal cards
+  const colGap = 4;
+  const rowGap = 4;
+
+  const periodSub = d.compareFrom
+    ? `${fmtDate(d.compareFrom)} — ${fmtDate(d.compareTo)}`
+    : `as of ${fmtDate(d.compareTo)}`;
+
+  const cards: Array<Parameters<typeof drawUnifiedCard>[5]> = [
+    // Row 1 — period activity (informational)
+    { label: 'Claims Registered', value: String(d.registeredInPeriod), accent: C.blue, sub: periodSub },
+    { label: 'Status Changes',    value: String(d.statusChanges),       accent: C.amber, sub: d.compareFrom ? periodSub : 'comparison required' },
+    { label: 'No Movement',       value: String(d.stuckClaims.length),  accent: C.red,   sub: 'critical & urgent — no status change' },
+    // Row 2 — priority snapshot with comparison
+    { label: 'Critical Claims', value: String(d.metrics.criticalCurrent), accent: C.red,
+      curr: d.metrics.criticalCurrent, prev: d.metrics.criticalPrevious, lowerIsBetter: true },
+    { label: 'Urgent Claims',   value: String(d.metrics.urgentCurrent),   accent: C.amber,
+      curr: d.metrics.urgentCurrent,   prev: d.metrics.urgentPrevious,   lowerIsBetter: true },
+    { label: 'Standard Claims', value: String(d.metrics.standardCurrent), accent: C.blue,
+      curr: d.metrics.standardCurrent, prev: d.metrics.standardPrevious, lowerIsBetter: false },
+    // Row 3 — financials & outcomes with comparison
+    { label: 'TAT Breaches',    value: String(d.metrics.tatBreachesCurrent), accent: C.darkRed,
+      curr: d.metrics.tatBreachesCurrent, prev: d.metrics.tatBreachesPrevious, lowerIsBetter: true },
+    { label: 'Est. Outstanding', value: fmtRand(d.metrics.totalOsCurrent), accent: C.navy,
+      curr: d.metrics.totalOsCurrent, prev: d.metrics.totalOsPrevious, lowerIsBetter: true, isRand: true },
+    { label: 'Claims Finalised', value: String(d.metrics.finalisedCurrent), accent: C.green,
+      curr: d.metrics.finalisedCurrent, prev: d.metrics.finalisedPrevious, lowerIsBetter: false },
+  ];
+
+  cards.forEach((card, i) => {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    drawUnifiedCard(doc, 14 + col * (cardW + colGap), y + row * (cardH + rowGap), cardW, cardH, card);
+  });
 }
 
 // ── Page 2: Portfolio + Stuck Claims ──────────────────────────────────────────
