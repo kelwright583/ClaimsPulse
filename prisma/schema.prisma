@@ -287,6 +287,7 @@ model TatConfig {
   alertRole       String   @map("alert_role")
   priority        String   @default("standard")
   isActive        Boolean  @default(true) @map("is_active")
+  needsConfig     Boolean  @default(false) @map("needs_config")
   updatedBy       String?  @map("updated_by") @db.Uuid
   updatedAt       DateTime @updatedAt @map("updated_at")
   createdAt       DateTime @default(now()) @map("created_at")

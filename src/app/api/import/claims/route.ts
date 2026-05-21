@@ -483,6 +483,45 @@ export async function POST(request: Request) {
     console.error('[claims-import] recomputeClaimAges failed (non-fatal):', err);
   }
 
+  // ── Auto-discover new secondary statuses ──────────────────────────────────
+  // Any status seen in the import that has no TAT config gets a placeholder
+  // entry (isActive: false, needsConfig: true). The user is then prompted on
+  // the TAT Matrix settings page to configure the days and priority.
+  let newStatusesFound = 0;
+  try {
+    const TERMINAL = new Set(['Finalised', 'Cancelled', 'Repudiated']);
+    const seenStatuses = [
+      ...new Set(
+        rows
+          .map(r => r.secondaryStatus)
+          .filter((s): s is string => !!s && !TERMINAL.has(s)),
+      ),
+    ];
+
+    if (seenStatuses.length > 0) {
+      const existingConfigs = await prisma.tatConfig.findMany({ select: { secondaryStatus: true } });
+      const existingSet = new Set(existingConfigs.map(c => c.secondaryStatus));
+      const toCreate = seenStatuses.filter(s => !existingSet.has(s));
+
+      if (toCreate.length > 0) {
+        await prisma.tatConfig.createMany({
+          data: toCreate.map(s => ({
+            secondaryStatus: s,
+            maxDays: 14,
+            alertRole: 'handler',
+            priority: 'standard',
+            isActive: false,
+            needsConfig: true,
+          })),
+          skipDuplicates: true,
+        });
+        newStatusesFound = toCreate.length;
+      }
+    }
+  } catch (err) {
+    console.error('[claims-import] TAT auto-discovery failed (non-fatal):', err);
+  }
+
   return Response.json({
     success: true,
     importRunId: importRun.id,
@@ -494,6 +533,7 @@ export async function POST(request: Request) {
     snapshotDate: snapshotDate.toISOString(),
     flagsComputed,
     flagComputationError,
+    newStatusesFound,
   });
   } catch (err) {
     console.error('[claims-import]', err);

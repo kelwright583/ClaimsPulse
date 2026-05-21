@@ -10,6 +10,7 @@ interface TatConfigRow {
   alertRole: string;
   priority: string;
   isActive: boolean;
+  needsConfig: boolean;
   updatedBy: string | null;
   updatedAt: string;
   createdAt: string;
@@ -40,10 +41,15 @@ export function TatMatrixClient() {
   const [resetting, setResetting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
+  const [unconfiguredCount, setUnconfiguredCount] = useState(0);
+
   useEffect(() => {
     fetch('/api/tat-config')
       .then(r => r.json())
-      .then(d => setConfigs(d.configs ?? []))
+      .then(d => {
+        setConfigs(d.configs ?? []);
+        setUnconfiguredCount(d.unconfiguredCount ?? 0);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -74,7 +80,8 @@ export function TatMatrixClient() {
       });
       if (!res.ok) throw new Error('Save failed');
       const updated: TatConfigRow = (await res.json()).config;
-      setConfigs(prev => prev.map(c => (c.id === updated.id ? { ...updated, updatedAt: updated.updatedAt } : c)));
+      setConfigs(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+      setUnconfiguredCount(prev => (row.needsConfig ? Math.max(0, prev - 1) : prev));
       setEditingId(null);
       setEditState(null);
       showToast('Saved', 'success');
@@ -114,9 +121,9 @@ export function TatMatrixClient() {
     );
   }
 
-  const criticalCount = configs.filter(c => c.priority === 'critical').length;
-  const urgentCount = configs.filter(c => c.priority === 'urgent').length;
-  const standardCount = configs.filter(c => c.priority === 'standard').length;
+  const criticalCount = configs.filter(c => c.priority === 'critical' && !c.needsConfig).length;
+  const urgentCount = configs.filter(c => c.priority === 'urgent' && !c.needsConfig).length;
+  const standardCount = configs.filter(c => c.priority === 'standard' && !c.needsConfig).length;
 
   return (
     <div>
@@ -128,6 +135,23 @@ export function TatMatrixClient() {
             : 'bg-[#991B1B] text-white'
         }`}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Unconfigured statuses banner */}
+      {unconfiguredCount > 0 && (
+        <div className="mb-6 flex items-start gap-3 bg-[#FFFBEB] border border-[#F5A800] rounded-xl px-4 py-3">
+          <span className="text-[#F5A800] text-lg leading-none flex-shrink-0">⚠</span>
+          <div>
+            <p className="text-sm font-semibold text-[#92400E]">
+              {unconfiguredCount} new status{unconfiguredCount !== 1 ? 'es' : ''} detected — TAT not yet configured
+            </p>
+            <p className="text-xs text-[#B45309] mt-0.5">
+              These statuses were found in your imported data but have no TAT thresholds set.
+              They are highlighted below — click <strong>Edit</strong> to set the days, priority, and alert role.
+              Until configured, they are inactive and will not trigger breach alerts.
+            </p>
+          </div>
         </div>
       )}
 
@@ -182,9 +206,28 @@ export function TatMatrixClient() {
                 return (
                   <tr
                     key={row.id}
-                    className={`border-b border-[#E8EEF8] last:border-0 ${isEditing ? 'bg-[#0D2761]/3' : idx % 2 === 1 ? 'bg-[#F4F6FA]/40' : ''}`}
+                    className={`border-b border-[#E8EEF8] last:border-0 ${
+                      isEditing
+                        ? 'bg-[#0D2761]/5'
+                        : row.needsConfig
+                        ? 'bg-[#FFFBEB]'
+                        : idx % 2 === 1
+                        ? 'bg-[#F4F6FA]/40'
+                        : ''
+                    }`}
                   >
-                    <td className="px-4 py-3 text-[#0D2761] font-medium">{row.secondaryStatus}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className={row.needsConfig ? 'text-[#92400E]' : 'text-[#0D2761]'}>
+                          {row.secondaryStatus}
+                        </span>
+                        {row.needsConfig && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F5A800]/20 text-[#92400E]">
+                            NEEDS CONFIG
+                          </span>
+                        )}
+                      </div>
+                    </td>
 
                     {/* Max days */}
                     <td className="px-4 py-3">

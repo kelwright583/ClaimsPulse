@@ -30,10 +30,13 @@ export async function GET() {
     if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const configs = await prisma.tatConfig.findMany({
-      orderBy: [{ priority: 'asc' }, { maxDays: 'asc' }],
+      // Unconfigured entries float to the top so they're immediately visible
+      orderBy: [{ needsConfig: 'desc' }, { priority: 'asc' }, { maxDays: 'asc' }],
     });
 
-    return Response.json({ configs });
+    const unconfiguredCount = configs.filter(c => c.needsConfig).length;
+
+    return Response.json({ configs, unconfiguredCount });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal error';
     return Response.json({ error: msg }, { status: 500 });
@@ -55,6 +58,7 @@ export async function PUT(request: NextRequest) {
         alertRole: body.alertRole,
         priority: body.priority,
         isActive: body.isActive,
+        needsConfig: false,  // Saving clears the "needs configuration" flag
         updatedBy: ctx.userId,
       },
     });
