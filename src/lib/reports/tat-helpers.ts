@@ -9,10 +9,22 @@ export interface TatConfigEntry {
   maxDays: number;
   priority: string;
   isActive: boolean;
+  isFinalised?: boolean;
 }
 
 export type TatPosition = 'on-track' | 'at-risk' | 'breach';
 export type TatStatus = 'BREACH' | 'AT RISK' | 'ON TRACK';
+
+/** Returns true if this secondary status is marked as a finalised/closure status
+ *  (e.g. "Claim Settled", "Claim Rejected") — these are excluded from action lists
+ *  and breach counts; they surface only in the Pending Closure view. */
+export function isFinalisedStatus(
+  secondaryStatus: string | null,
+  tatMap: Map<string, TatConfigEntry>,
+): boolean {
+  if (!secondaryStatus) return false;
+  return tatMap.get(secondaryStatus)?.isFinalised === true;
+}
 
 export function computeTatPosition(
   secondaryStatus: string | null,
@@ -20,7 +32,8 @@ export function computeTatPosition(
   tatMap: Map<string, TatConfigEntry>,
 ): TatPosition {
   const cfg = secondaryStatus ? tatMap.get(secondaryStatus) : undefined;
-  if (!cfg) return 'on-track';
+  // Finalised statuses are never in breach — they're pending administrative closure
+  if (!cfg || cfg.isFinalised) return 'on-track';
   const days = daysInCurrentStatus ?? 0;
   if (days > cfg.maxDays) return 'breach';
   if (days > cfg.maxDays * 0.8) return 'at-risk';

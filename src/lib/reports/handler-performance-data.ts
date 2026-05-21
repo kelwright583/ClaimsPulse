@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { computeTatBreach, priorityFromTat, tatPositionToStatus, computeTatPosition } from './tat-helpers';
+import { computeTatBreach, priorityFromTat, tatPositionToStatus, computeTatPosition, isFinalisedStatus } from './tat-helpers';
 import type { HandlerPerformancePDFData } from './handler-performance-pdf';
 
 export async function fetchHandlerPerformanceData(
@@ -31,7 +31,10 @@ export async function fetchHandlerPerformanceData(
     },
   });
 
-  const openSnaps = toSnaps.filter(s => !['Finalised', 'Cancelled', 'Repudiated'].includes(s.claimStatus ?? ''));
+  const openSnaps = toSnaps.filter(s =>
+    !['Finalised', 'Cancelled', 'Repudiated'].includes(s.claimStatus ?? '') &&
+    !isFinalisedStatus(s.secondaryStatus, tatMap),
+  );
 
   const classifySnap = (s: typeof openSnaps[0]) => {
     const tatBreach = computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap);

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
-import { computeTatBreach, priorityFromTat } from '@/lib/reports/tat-helpers';
+import { computeTatBreach, priorityFromTat, isFinalisedStatus } from '@/lib/reports/tat-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +40,9 @@ export async function GET(request: NextRequest) {
       select: { claimId: true, secondaryStatus: true, daysInCurrentStatus: true, totalOs: true, totalIncurred: true, claimStatus: true },
     });
 
+    // Exclude pending-closure claims (isFinalised secondary status) from active workload
+    const activeSnaps = toSnaps.filter(s => !isFinalisedStatus(s.secondaryStatus, tatMap));
+
     // Classify items
     const classifyItems = (snaps: typeof toSnaps) => snaps.map(s => {
       const tatBreach = computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap);
@@ -59,12 +62,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const currentItems = classifyItems(toSnaps);
+    const currentItems = classifyItems(activeSnaps);
     const criticalItems = currentItems.filter(i => i.priority === 'critical');
     const urgentItems = currentItems.filter(i => i.priority === 'urgent');
     const standardItems = currentItems.filter(i => i.priority === 'standard');
     const tatBreachesCurrent = currentItems.filter(i => i.tatStatus === 'BREACH').length;
-    const totalOsCurrent = toSnaps.reduce((sum, s) => sum + Number(s.totalOs ?? 0), 0);
+    const totalOsCurrent = activeSnaps.reduce((sum, s) => sum + Number(s.totalOs ?? 0), 0);
 
     // Finalised count (for period)
     const finalisedCurrent = await prisma.claimSnapshot.count({
@@ -77,7 +80,7 @@ export async function GET(request: NextRequest) {
       urgent: urgentItems.length,
       standard: standardItems.length,
       finalised: finalisedCurrent,
-      totalOpen: toSnaps.length,
+      totalOpen: activeSnaps.length,
     };
 
     // Comparison data (if fromDate provided)

@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
 import type { Prisma } from '@prisma/client';
+import { isFinalisedStatus } from '@/lib/reports/tat-helpers';
 
 const ALLOWED_ROLES = ['HEAD_OF_CLAIMS', 'TEAM_LEADER'] as const;
 
@@ -109,6 +110,71 @@ export async function GET(request: NextRequest) {
         summary: { totalClaims: 0, totalIncurred: 0, totalOutstanding: 0, totalPaid: 0, avgDaysInStatus: 0 },
         claims: [],
         pagination: { page: 1, limit, total: 0, totalPages: 0 },
+      });
+    }
+
+    // Pending closure: open claims whose secondaryStatus is marked isFinalised in TAT config
+    if (type === 'pending_closure') {
+      const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true, isFinalised: true } });
+      const tatMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
+      const finalisedStatuses = tatConfigs.map(c => c.secondaryStatus);
+
+      if (finalisedStatuses.length === 0) {
+        return NextResponse.json({
+          summary: { totalClaims: 0, totalIncurred: 0, totalOutstanding: 0, totalPaid: 0, avgDaysInStatus: 0, byStatus: [] },
+          claims: [],
+          pagination: { page: 1, limit, total: 0, totalPages: 0 },
+        });
+      }
+
+      const wherePC: Prisma.ClaimSnapshotWhereInput = {
+        snapshotDate: latestDate,
+        claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
+        secondaryStatus: { in: finalisedStatuses },
+      };
+
+      const [total, pcClaims] = await Promise.all([
+        prisma.claimSnapshot.count({ where: wherePC }),
+        prisma.claimSnapshot.findMany({
+          where: wherePC,
+          orderBy: [{ daysInCurrentStatus: 'desc' }],
+          skip,
+          take: limit,
+          select: {
+            claimId: true, handler: true, claimStatus: true, secondaryStatus: true,
+            cause: true, lossArea: true, insured: true, broker: true,
+            dateOfLoss: true, daysInCurrentStatus: true, daysOpen: true,
+            totalOs: true, totalPaid: true, totalIncurred: true,
+          },
+        }),
+      ]);
+
+      const byStatus = tatMap.size > 0
+        ? [...tatMap.keys()].map(s => ({ status: s, count: 0 }))
+        : [];
+
+      return NextResponse.json({
+        summary: {
+          totalClaims: total,
+          totalIncurred: 0,
+          totalOutstanding: pcClaims.reduce((s, c) => s + Number(c.totalOs ?? 0), 0),
+          totalPaid: 0,
+          avgDaysInStatus: pcClaims.length > 0
+            ? Math.round(pcClaims.reduce((s, c) => s + (c.daysInCurrentStatus ?? 0), 0) / pcClaims.length)
+            : 0,
+          byStatus,
+        },
+        claims: pcClaims.map(c => ({
+          claimId: c.claimId, handler: c.handler, claimStatus: c.claimStatus,
+          secondaryStatus: c.secondaryStatus, cause: c.cause, lossArea: c.lossArea,
+          insured: c.insured, broker: c.broker,
+          dateOfLoss: c.dateOfLoss?.toISOString() ?? null,
+          daysInCurrentStatus: c.daysInCurrentStatus, daysOpen: c.daysOpen,
+          intimatedAmount: null, totalPaid: Number(c.totalPaid ?? 0),
+          totalOutstanding: Number(c.totalOs ?? 0), totalIncurred: Number(c.totalIncurred ?? 0),
+          totalRecovery: null, totalSalvage: null, isTatBreach: false,
+        })),
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       });
     }
 

@@ -23,6 +23,7 @@ interface MorningBriefData {
     newlyBreached: number;
     valueJumps: number;
     stagnant: number;
+    pendingClosure: number;
   };
   handlerHealth: Array<{
     handler: string;
@@ -32,7 +33,7 @@ interface MorningBriefData {
   }>;
   comparison: {
     alertCards: AlertCardsShape;
-    attention: { readyToClose: number; newlyBreached: number; valueJumps: number; stagnant: number };
+    attention: { readyToClose: number; newlyBreached: number; valueJumps: number; stagnant: number; pendingClosure: number };
   } | null;
 }
 
@@ -216,6 +217,12 @@ export function MorningBrief({ role: _role, userId: _userId, filters: _filters }
           subtitle: 'Breached + no status movement',
           value: attention.stagnant,
           type: 'stagnant' as const,
+        },
+        {
+          label: 'Pending Closure',
+          subtitle: 'Effectively done — not yet closed in system',
+          value: attention.pendingClosure,
+          type: 'pending_closure' as const,
         },
       ]
     : [];

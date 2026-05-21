@@ -49,7 +49,7 @@ export async function PUT(request: NextRequest) {
     if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (ctx.role !== 'HEAD_OF_CLAIMS') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
-    const body = await request.json() as { id: string; maxDays: number; alertRole: string; priority: string; isActive: boolean };
+    const body = await request.json() as { id: string; maxDays: number; alertRole: string; priority: string; isActive: boolean; isFinalised: boolean };
 
     const updated = await prisma.tatConfig.update({
       where: { id: body.id },
@@ -58,6 +58,7 @@ export async function PUT(request: NextRequest) {
         alertRole: body.alertRole,
         priority: body.priority,
         isActive: body.isActive,
+        isFinalised: body.isFinalised,
         needsConfig: false,  // Saving clears the "needs configuration" flag
         updatedBy: ctx.userId,
       },

@@ -23,10 +23,10 @@ const SLA_SEED = [
   { secondaryStatus: 'Own damage claim finalised, TP claim in Process', maxDays: 60, alertRole: 'tp_handler', priority: 'standard' },
   { secondaryStatus: 'TP Liability Claim in Progress', maxDays: 60, alertRole: 'tp_handler', priority: 'standard' },
   { secondaryStatus: 'TP Recovery Claim in Progress', maxDays: 60, alertRole: 'tp_handler', priority: 'standard' },
-  { secondaryStatus: 'Claim for Notification Purposes Only', maxDays: 30, alertRole: 'handler', priority: 'standard' },
-  { secondaryStatus: 'Claim Settled', maxDays: 14, alertRole: 'handler', priority: 'standard' },
-  { secondaryStatus: 'Claim Rejected - Ex Gratia Settlement Approved', maxDays: 7, alertRole: 'both', priority: 'urgent' },
-  { secondaryStatus: 'Claim Rejected', maxDays: 5, alertRole: 'handler', priority: 'urgent' },
+  { secondaryStatus: 'Claim for Notification Purposes Only', maxDays: 30, alertRole: 'handler', priority: 'standard', isFinalised: true },
+  { secondaryStatus: 'Claim Settled', maxDays: 14, alertRole: 'handler', priority: 'standard', isFinalised: true },
+  { secondaryStatus: 'Claim Rejected - Ex Gratia Settlement Approved', maxDays: 7, alertRole: 'both', priority: 'urgent', isFinalised: true },
+  { secondaryStatus: 'Claim Rejected', maxDays: 5, alertRole: 'handler', priority: 'urgent', isFinalised: true },
   { secondaryStatus: 'Assessment Received', maxDays: 3, alertRole: 'handler', priority: 'urgent' },
   { secondaryStatus: 'Claim Registered', maxDays: 1, alertRole: 'handler', priority: 'critical' },
   { secondaryStatus: 'None', maxDays: 3, alertRole: 'head_of_claims', priority: 'urgent' },
@@ -38,7 +38,7 @@ async function main() {
   for (const entry of SLA_SEED) {
     await prisma.tatConfig.upsert({
       where: { secondaryStatus: entry.secondaryStatus },
-      update: {},
+      update: { isFinalised: ('isFinalised' in entry) ? entry.isFinalised : false },
       create: entry,
     });
   }

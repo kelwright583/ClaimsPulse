@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { isFinalisedStatus, computeTatBreach } from '@/lib/reports/tat-helpers';
 
 type Priority = 'critical' | 'urgent' | 'standard';
 
@@ -44,11 +45,10 @@ export async function GET(request: NextRequest) {
     });
     const handlers = handlerRows.map(r => r.handler!).filter(Boolean);
 
-    // Fetch open claims for the handler — exclude Claim Settled (those belong in Pending Finalisation)
+    // Fetch open claims for the handler
     const where: any = {
       snapshotDate,
       claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
-      NOT: { secondaryStatus: { contains: 'Claim Settled', mode: 'insensitive' } },
     };
     if (handlerParam) where.handler = handlerParam;
 
@@ -108,15 +108,15 @@ export async function GET(request: NextRequest) {
     const prevStatusMap = new Map(prevSnaps.map(p => [p.claimId, p.secondaryStatus]));
     const compareStatusMap = new Map(compareSnaps.map(p => [p.claimId, p.secondaryStatus]));
 
-    const items = snapshots.map(s => {
+    // Exclude pending-closure claims from the action list — they don't need daily attention
+    const activeSnapshots = snapshots.filter(s => !isFinalisedStatus(s.secondaryStatus, slaMap));
+
+    const items = activeSnapshots.map(s => {
       const tatConfig = s.secondaryStatus ? slaMap.get(s.secondaryStatus) : null;
       const delay = delayMap.get(s.claimId);
 
-      // Compute TAT breach from secondaryStatus + daysInCurrentStatus vs TAT matrix
-      // (do not trust the stored isTatBreach field which may reflect primary status)
-      const computedTatBreach = tatConfig
-        ? (s.daysInCurrentStatus ?? 0) > tatConfig.maxDays
-        : false;
+      // Compute TAT breach live from tatMap so TAT matrix changes take effect immediately
+      const computedTatBreach = computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, slaMap);
 
       let priority: Priority = 'standard';
       if (computedTatBreach && tatConfig?.priority === 'critical') {

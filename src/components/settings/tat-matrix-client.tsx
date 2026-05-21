@@ -11,6 +11,7 @@ interface TatConfigRow {
   priority: string;
   isActive: boolean;
   needsConfig: boolean;
+  isFinalised: boolean;
   updatedBy: string | null;
   updatedAt: string;
   createdAt: string;
@@ -21,6 +22,7 @@ interface EditState {
   alertRole: string;
   priority: string;
   isActive: boolean;
+  isFinalised: boolean;
 }
 
 const PRIORITY_OPTIONS = ['critical', 'urgent', 'standard'] as const;
@@ -61,7 +63,7 @@ export function TatMatrixClient() {
 
   function startEdit(row: TatConfigRow) {
     setEditingId(row.id);
-    setEditState({ maxDays: row.maxDays, alertRole: row.alertRole, priority: row.priority, isActive: row.isActive });
+    setEditState({ maxDays: row.maxDays, alertRole: row.alertRole, priority: row.priority, isActive: row.isActive, isFinalised: row.isFinalised });
   }
 
   function cancelEdit() {
@@ -76,7 +78,7 @@ export function TatMatrixClient() {
       const res = await fetch('/api/tat-config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: row.id, ...editState }),
+        body: JSON.stringify({ id: row.id, ...editState, isFinalised: editState.isFinalised ?? false }),
       });
       if (!res.ok) throw new Error('Save failed');
       const updated: TatConfigRow = (await res.json()).config;
@@ -196,6 +198,7 @@ export function TatMatrixClient() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide w-44">Alert Role</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide w-32">Priority</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide w-20">Active</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide w-32">Pending Closure</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#F5A800] uppercase tracking-wide w-32">Updated</th>
                 <th className="px-4 py-3 w-24" />
               </tr>
@@ -237,11 +240,12 @@ export function TatMatrixClient() {
                           min={1}
                           max={365}
                           value={editState.maxDays}
+                          disabled={editState.isFinalised}
                           onChange={e => setEditState(s => s ? { ...s, maxDays: Number(e.target.value) } : s)}
-                          className="w-16 px-2 py-1 border border-[#0D2761] rounded-md text-sm text-center focus:outline-none"
+                          className="w-16 px-2 py-1 border border-[#0D2761] rounded-md text-sm text-center focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed"
                         />
                       ) : (
-                        <span className="tabular-nums text-[#0D2761] font-semibold">{row.maxDays}</span>
+                        <span className={`tabular-nums font-semibold ${row.isFinalised ? 'text-[#9CA3AF] line-through' : 'text-[#0D2761]'}`}>{row.maxDays}</span>
                       )}
                     </td>
 
@@ -294,6 +298,26 @@ export function TatMatrixClient() {
                         <span className={`text-xs font-medium ${row.isActive ? 'text-[#065F46]' : 'text-[#6B7280]'}`}>
                           {row.isActive ? 'Yes' : 'No'}
                         </span>
+                      )}
+                    </td>
+
+                    {/* Pending Closure (isFinalised) */}
+                    <td className="px-4 py-3">
+                      {isEditing && editState ? (
+                        <input
+                          type="checkbox"
+                          checked={editState.isFinalised}
+                          onChange={e => setEditState(s => s ? { ...s, isFinalised: e.target.checked } : s)}
+                          className="w-4 h-4 rounded border-[#E8EEF8] accent-[#F5A800]"
+                        />
+                      ) : (
+                        row.isFinalised ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#FFFBEB] text-[#92400E] border border-[#F5A800]/30">
+                            Pending Closure
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[#9CA3AF]">—</span>
+                        )
                       )}
                     </td>
 

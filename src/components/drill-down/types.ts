@@ -7,6 +7,7 @@ export type DrillDownType =
   | 'newly_breached'
   | 'value_jumps'
   | 'stagnant'
+  | 'pending_closure'
   | 'handler'
   | 'reserve_by_handler';
 

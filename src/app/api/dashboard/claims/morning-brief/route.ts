@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionContext } from '@/lib/supabase/auth-helpers';
+import { computeTatBreach, isFinalisedStatus } from '@/lib/reports/tat-helpers';
 
 const ALLOWED_ROLES = ['HEAD_OF_CLAIMS', 'TEAM_LEADER'] as const;
 
@@ -35,6 +36,10 @@ export async function GET(request: NextRequest) {
 
     const snapshotDate = latestDate;
 
+    // Load TAT config once — used for live breach computation everywhere below
+    const tatConfigs = await prisma.tatConfig.findMany({ where: { isActive: true } });
+    const tatMap = new Map(tatConfigs.map(c => [c.secondaryStatus, c]));
+
     // Previous snapshot date
     const prevSnap = await prisma.claimSnapshot.findFirst({
       where: { snapshotDate: { lt: snapshotDate } },
@@ -43,131 +48,111 @@ export async function GET(request: NextRequest) {
     });
     const prevDate = prevSnap?.snapshotDate ?? null;
 
-    // Alert cards
-    const [tatBreaches, bigClaimsOpen, redFlags, unassignedWithPayment] = await Promise.all([
-      prisma.claimSnapshot.count({
-        where: {
-          snapshotDate,
-          isTatBreach: true,
-          claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
-        },
-      }),
-      prisma.claimSnapshot.count({
-        where: {
-          snapshotDate,
-          claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
-          totalIncurred: { gt: 250000 },
+    // Load all open snapshots for today — single fetch, compute everything from it
+    // This ensures TAT matrix edits (maxDays/priority) take effect immediately
+    const [allOpenSnaps, redFlags, unassignedWithPayment, latestRun] = await Promise.all([
+      prisma.claimSnapshot.findMany({
+        where: { snapshotDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } },
+        select: {
+          claimId: true,
+          secondaryStatus: true,
+          daysInCurrentStatus: true,
+          totalOs: true,
+          totalIncurred: true,
+          handler: true,
+          deltaFlags: true,
         },
       }),
       prisma.claimFlag.count({ where: { detail: { path: ['actioned'], equals: false } } }),
-      prisma.claimSnapshot.count({
-        where: { snapshotDate, handler: null, totalPaid: { gt: 0 } },
-      }),
+      prisma.claimSnapshot.count({ where: { snapshotDate, handler: null, totalPaid: { gt: 0 } } }),
+      prisma.importRun.findFirst({ orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
     ]);
 
-    // Latest import run for uploadDate
-    const latestRun = await prisma.importRun.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    });
+    // Split: active claims vs pending-closure claims (isFinalised secondary status)
+    const pendingClosureSnaps = allOpenSnaps.filter(s => isFinalisedStatus(s.secondaryStatus, tatMap));
+    const activeSnaps = allOpenSnaps.filter(s => !isFinalisedStatus(s.secondaryStatus, tatMap));
 
-    // Ready to close: open claims with R0 total outstanding
-    const readyToClose = await prisma.claimSnapshot.count({
-      where: {
-        snapshotDate,
-        claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] },
-        OR: [{ totalOs: null }, { totalOs: 0 }],
-      },
-    });
+    // Alert card counts — live breach computation (respects current TAT matrix values)
+    const tatBreaches = activeSnaps.filter(s => computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap)).length;
+    const bigClaimsOpen = activeSnaps.filter(s => Number(s.totalIncurred ?? 0) > 250000).length;
 
-    // Newly breached: breached today but NOT yesterday
-    let newlyBreached = 0;
-    if (prevDate) {
-      const [breachedToday, breachedYesterday] = await Promise.all([
-        prisma.claimSnapshot.findMany({
-          where: { snapshotDate, isTatBreach: true },
-          select: { claimId: true },
-        }),
-        prisma.claimSnapshot.findMany({
-          where: { snapshotDate: prevDate, isTatBreach: true },
-          select: { claimId: true },
-        }),
-      ]);
-      const prevBreachSet = new Set(breachedYesterday.map(r => r.claimId));
-      newlyBreached = breachedToday.filter(r => !prevBreachSet.has(r.claimId)).length;
-    }
-
-    // Value jumps and stagnant from delta flags
-    const deltaSnapshots = await prisma.claimSnapshot.findMany({
-      where: { snapshotDate, deltaFlags: { not: undefined } },
-      select: { deltaFlags: true, isTatBreach: true },
-    });
+    // Attention items
+    const readyToClose = activeSnaps.filter(s => !s.totalOs || Number(s.totalOs) === 0).length;
+    const pendingClosure = pendingClosureSnaps.length;
 
     let valueJumps = 0, stagnant = 0;
-    for (const s of deltaSnapshots) {
+    for (const s of activeSnaps) {
       const flags = s.deltaFlags as Record<string, unknown> | null;
       if (!flags) continue;
       if (flags['value_jump_20pct']) valueJumps++;
-      if (s.isTatBreach && !flags['secondary_status_change']) stagnant++;
+      const isBreach = computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap);
+      if (isBreach && !flags['secondary_status_change']) stagnant++;
     }
 
-    // Handler health via raw query for efficiency
-    const handlerHealthRaw = await prisma.$queryRaw<{
-      handler: string | null;
-      open_count: bigint;
-      breach_count: bigint;
-      last_activity: Date | null;
-    }[]>`
-      SELECT
-        handler,
-        COUNT(*) FILTER (WHERE claim_status NOT IN ('Finalised', 'Cancelled', 'Repudiated')) AS open_count,
-        COUNT(*) FILTER (WHERE is_tat_breach = true) AS breach_count,
-        MAX(snapshot_date) AS last_activity
-      FROM claim_snapshots
-      WHERE snapshot_date = ${snapshotDate}
-        AND handler IS NOT NULL
-      GROUP BY handler
-      ORDER BY open_count DESC
-    `;
+    // Newly breached: in breach today but not yesterday (live computation on both dates)
+    let newlyBreached = 0;
+    if (prevDate) {
+      const prevOpenSnaps = await prisma.claimSnapshot.findMany({
+        where: { snapshotDate: prevDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } },
+        select: { claimId: true, secondaryStatus: true, daysInCurrentStatus: true },
+      });
+      const prevBreachedSet = new Set(
+        prevOpenSnaps
+          .filter(s => !isFinalisedStatus(s.secondaryStatus, tatMap) && computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap))
+          .map(s => s.claimId),
+      );
+      newlyBreached = activeSnaps
+        .filter(s => computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap) && !prevBreachedSet.has(s.claimId))
+        .length;
+    }
 
-    const handlerHealth = handlerHealthRaw.map(r => ({
-      handler: r.handler ?? '',
-      openCount: Number(r.open_count),
-      breachCount: Number(r.breach_count),
-      lastActivity: r.last_activity ? r.last_activity.toISOString() : null,
-    }));
+    // Handler health — live breach from tatMap (not stored field)
+    const handlerMap = new Map<string, { openCount: number; breachCount: number }>();
+    for (const s of activeSnaps) {
+      if (!s.handler) continue;
+      const h = handlerMap.get(s.handler) ?? { openCount: 0, breachCount: 0 };
+      h.openCount++;
+      if (computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap)) h.breachCount++;
+      handlerMap.set(s.handler, h);
+    }
+    const handlerHealth = [...handlerMap.entries()]
+      .map(([handler, h]) => ({ handler, openCount: h.openCount, breachCount: h.breachCount, lastActivity: null }))
+      .sort((a, b) => b.openCount - a.openCount);
 
     // Comparison data
     let comparison: {
       alertCards: { tatBreaches: number; redFlags: number; bigClaimsOpen: number; unassignedWithPayment: number };
-      attention: { readyToClose: number; newlyBreached: number; valueJumps: number; stagnant: number };
+      attention: { readyToClose: number; newlyBreached: number; valueJumps: number; stagnant: number; pendingClosure: number };
     } | null = null;
 
     if (compareFrom) {
       const fromDate = new Date(compareFrom);
-      const [cTatBreaches, cBigClaimsOpen, cRedFlags, cUnassigned, cReadyToClose] = await Promise.all([
-        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, isTatBreach: true, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } } }),
-        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] }, totalIncurred: { gt: 250000 } } }),
+      const [cOpenSnaps, cRedFlags, cUnassigned] = await Promise.all([
+        prisma.claimSnapshot.findMany({
+          where: { snapshotDate: fromDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] } },
+          select: { claimId: true, secondaryStatus: true, daysInCurrentStatus: true, totalOs: true, totalIncurred: true, deltaFlags: true, handler: true },
+        }),
         prisma.claimFlag.count({ where: { detail: { path: ['actioned'], equals: false } } }),
         prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, handler: null, totalPaid: { gt: 0 } } }),
-        prisma.claimSnapshot.count({ where: { snapshotDate: fromDate, claimStatus: { notIn: ['Finalised', 'Cancelled', 'Repudiated'] }, OR: [{ totalOs: null }, { totalOs: 0 }] } }),
       ]);
 
-      const cDeltaSnaps = await prisma.claimSnapshot.findMany({
-        where: { snapshotDate: fromDate, deltaFlags: { not: undefined } },
-        select: { deltaFlags: true, isTatBreach: true },
-      });
+      const cActive = cOpenSnaps.filter(s => !isFinalisedStatus(s.secondaryStatus, tatMap));
+      const cTatBreaches = cActive.filter(s => computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap)).length;
+      const cBigClaims = cActive.filter(s => Number(s.totalIncurred ?? 0) > 250000).length;
+      const cReadyToClose = cActive.filter(s => !s.totalOs || Number(s.totalOs) === 0).length;
+      const cPendingClosure = cOpenSnaps.filter(s => isFinalisedStatus(s.secondaryStatus, tatMap)).length;
+
       let cValueJumps = 0, cStagnant = 0;
-      for (const s of cDeltaSnaps) {
+      for (const s of cActive) {
         const flags = s.deltaFlags as Record<string, unknown> | null;
         if (!flags) continue;
         if (flags['value_jump_20pct']) cValueJumps++;
-        if (s.isTatBreach && !flags['secondary_status_change']) cStagnant++;
+        if (computeTatBreach(s.secondaryStatus, s.daysInCurrentStatus, tatMap) && !flags['secondary_status_change']) cStagnant++;
       }
 
       comparison = {
-        alertCards: { tatBreaches: cTatBreaches, redFlags: cRedFlags, bigClaimsOpen: cBigClaimsOpen, unassignedWithPayment: cUnassigned },
-        attention: { readyToClose: cReadyToClose, newlyBreached: 0, valueJumps: cValueJumps, stagnant: cStagnant },
+        alertCards: { tatBreaches: cTatBreaches, redFlags: cRedFlags, bigClaimsOpen: cBigClaims, unassignedWithPayment: cUnassigned },
+        attention: { readyToClose: cReadyToClose, newlyBreached: 0, valueJumps: cValueJumps, stagnant: cStagnant, pendingClosure: cPendingClosure },
       };
     }
 
@@ -179,6 +164,7 @@ export async function GET(request: NextRequest) {
         newlyBreached,
         valueJumps,
         stagnant,
+        pendingClosure,
       },
       handlerHealth,
       comparison,
